@@ -22,7 +22,6 @@ class Settings(BaseSettings):
     # ── External APIs ─────────────────────────────────────────────────────
     openweather_api_key: str = ""
     aviationstack_api_key: str = ""
-    sendgrid_api_key: str = ""
 
     # ── IBM Db2 ───────────────────────────────────────────────────────────
     db2_host: str = ""
