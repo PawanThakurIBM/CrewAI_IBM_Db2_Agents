@@ -1,0 +1,9 @@
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Environment — never commit secrets
+.env

@@ -1,18 +1,26 @@
 """
-IBM Db2 Search Tool — stub.
+IBM Db2 Search Tool — CrewAI Tool.
 
-The full implementation is owned by Pawan (task P6).
-This stub allows agents to import and instantiate the tool without Db2 being configured.
-When Pawan's retrieval pipeline is ready, replace _run() with:
+All 10 agents call this tool to query the airline enterprise knowledge base.
+Internally it runs the Haystack retrieval pipeline (embed → vector search → rerank)
+against IBM Db2 and returns formatted document excerpts.
 
-    from src.knowledge.retrieval_pipeline import retrieve
+Contract (agreed with Dhruv):
+- name: "IBM Db2 Enterprise Knowledge Search"   ← exact string, do not change
+- _run() always returns a str
+- Output format:
+    [Document 1 — filename.md]
+    <content>
 
-    def _run(self, query: str) -> str:
-        docs = retrieve(query)
-        return docs
+    [Document 2 — filename.md]
+    <content>
 """
 from crewai.tools import BaseTool
-from pydantic import Field
+
+from src.knowledge.retrieval_pipeline import retrieve
+from src.utils.logger import get_logger
+
+log = get_logger(__name__)
 
 
 class Db2SearchTool(BaseTool):
@@ -26,17 +34,12 @@ class Db2SearchTool(BaseTool):
         "Output: the most relevant policy / procedure excerpts."
     )
 
-    def _run(self, query: str) -> str:  # noqa: D401
-        """
-        Stub — returns a placeholder until Pawan's retrieval pipeline is integrated.
-        Replace this method body with: return retrieve(query)
-        """
-        return (
-            f"[IBM Db2 Search Tool — stub]\n"
-            f"Query received: '{query}'\n"
-            f"Pawan's retrieval pipeline is not yet connected. "
-            f"Once integrated, this will return relevant policy/SOP excerpts from IBM Db2."
-        )
+    def _run(self, query: str) -> str:
+        """Query Haystack retrieval pipeline and return formatted excerpts."""
+        log.info("db2_search_tool.query", query=query[:120])
+        result = retrieve(query)
+        log.info("db2_search_tool.result_length", chars=len(result))
+        return result
 
 
 # Singleton instance shared across all agents
