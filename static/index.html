@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Airline Delay Management Assistant</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2128;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #7d8590;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --orange: #ffa657;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+  header .logo {
+    width: 32px; height: 32px;
+    background: var(--accent);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px; color: #0d1117;
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 15px; font-weight: 600; color: var(--text); }
+  header p  { font-size: 12px; color: var(--muted); }
+  header .badge {
+    margin-left: auto;
+    font-size: 11px; font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  header .badge.live { border-color: var(--green); color: var(--green); }
+
+  /* ── Layout ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Left panel — chat ── */
+  .chat-panel {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .chat-panel-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .messages::-webkit-scrollbar { width: 4px; }
+  .messages::-webkit-scrollbar-track { background: transparent; }
+  .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .msg {
+    max-width: 90%;
+    padding: 10px 13px;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.55;
+    word-break: break-word;
+  }
+  .msg.user {
+    align-self: flex-end;
+    background: var(--accent);
+    color: #0d1117;
+    border-bottom-right-radius: 3px;
+  }
+  .msg.assistant {
+    align-self: flex-start;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 3px;
+    color: var(--text);
+  }
+  .msg.system {
+    align-self: center;
+    background: transparent;
+    color: var(--muted);
+    font-size: 11px;
+    border: none;
+    padding: 4px 0;
+  }
+
+  .chat-input-area {
+    padding: 12px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+  }
+  .chat-input-area textarea {
+    flex: 1;
+    resize: none;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 13px;
+    padding: 9px 11px;
+    line-height: 1.5;
+    max-height: 100px;
+    overflow-y: auto;
+    outline: none;
+    font-family: inherit;
+  }
+  .chat-input-area textarea:focus { border-color: var(--accent); }
+  .chat-input-area textarea::placeholder { color: var(--muted); }
+  .send-btn {
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    color: #0d1117;
+    font-weight: 600;
+    font-size: 13px;
+    padding: 9px 16px;
+    cursor: pointer;
+    white-space: nowrap;
+    height: 38px;
+    flex-shrink: 0;
+    transition: opacity .15s;
+  }
+  .send-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  .suggestions {
+    padding: 0 12px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .suggestions p { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  .sug-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 12px;
+    padding: 7px 10px;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color .15s;
+  }
+  .sug-btn:hover { border-color: var(--accent); }
+
+  /* ── Right panel ── */
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg);
+  }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .tab-btn {
+    padding: 11px 20px;
+    font-size: 13px;
+    font-weight: 500;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color .15s, border-color .15s;
+  }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .tab-content { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+  .tab-content.active { display: flex; }
+
+  /* ── Orchestration tab ── */
+  .orchestration-tab {
+    overflow-y: auto;
+    padding: 24px;
+    gap: 0;
+  }
+  .orchestration-tab::-webkit-scrollbar { width: 4px; }
+  .orchestration-tab::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .orch-header {
+    font-size: 13px; color: var(--muted); margin-bottom: 20px;
+    line-height: 1.6;
+  }
+
+  /* Agent pipeline */
+  .pipeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+  }
+
+  .pipeline-row {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 8px;
+    position: relative;
+  }
+
+  .agent-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    width: 200px;
+    cursor: pointer;
+    transition: border-color .2s, box-shadow .2s;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .agent-card:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent)22; }
+  .agent-card.running {
+    border-color: var(--yellow);
+    box-shadow: 0 0 0 2px var(--yellow)22;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .agent-card.done { border-color: var(--green); }
+  .agent-card.done .agent-status { color: var(--green); }
+
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 2px var(--yellow)22; }
+    50%       { box-shadow: 0 0 0 5px var(--yellow)11; }
+  }
+
+  .agent-num {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--muted);
+    margin-bottom: 4px;
+    letter-spacing: .04em;
+  }
+  .agent-role {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+  .agent-task-name {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .agent-status {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .agent-elapsed {
+    position: absolute;
+    top: 8px; right: 10px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  /* Arrow connectors */
+  .pipeline-arrow {
+    text-align: center;
+    color: var(--border);
+    font-size: 20px;
+    line-height: 1;
+    margin: 2px 0 2px;
+    user-select: none;
+  }
+  .pipeline-arrow.lit { color: var(--green); }
+
+  /* Db2 legend */
+  .db2-legend {
+    margin-top: 20px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .db2-legend .db2-dot {
+    width: 10px; height: 10px;
+    background: var(--purple);
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── Output tab ── */
+  .output-tab {
+    padding: 24px;
+    overflow-y: auto;
+    gap: 0;
+  }
+  .output-tab::-webkit-scrollbar { width: 4px; }
+  .output-tab::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .no-output {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 40px;
+    text-align: center;
+  }
+
+  .final-output {
+    background: var(--surface);
+    border: 1px solid var(--green);
+    border-radius: 10px;
+    padding: 20px;
+    font-size: 13px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text);
+  }
+
+  /* ── Agent detail modal ── */
+  .modal-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: #00000099;
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 640px;
+    max-width: 94vw;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .modal-header h2 { font-size: 15px; font-weight: 600; }
+  .modal-header .close-btn {
+    background: none; border: none;
+    color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1;
+  }
+  .modal-meta {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex; gap: 20px;
+  }
+  .modal-meta .kv { font-size: 12px; }
+  .modal-meta .kv span { color: var(--muted); }
+  .modal-meta .kv strong { color: var(--text); }
+  .modal-body {
+    padding: 16px 20px;
+    overflow-y: auto;
+    flex: 1;
+    font-size: 13px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text);
+  }
+  .modal-body::-webkit-scrollbar { width: 4px; }
+  .modal-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .modal-placeholder {
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  /* Progress bar */
+  .progress-bar-wrap {
+    height: 3px;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+  .progress-bar {
+    height: 100%;
+    background: var(--accent);
+    transition: width .4s ease;
+    width: 0%;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">AI</div>
+  <div>
+    <h1>Airline Delay Management Assistant</h1>
+    <p>CrewAI &middot; IBM Granite (Ollama) &middot; Haystack &middot; IBM Db2</p>
+  </div>
+  <span class="badge" id="statusBadge">Idle</span>
+</header>
+
+<div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+
+<div class="layout">
+
+  <!-- ── Left: Chat ── -->
+  <div class="chat-panel">
+    <div class="chat-panel-header">Chat</div>
+
+    <div class="suggestions" id="suggestionsArea">
+      <p>Try a query</p>
+      <button class="sug-btn" onclick="fillQuery('Flight AI302 from Delhi to London is delayed because of heavy rain. What should we do?')">
+        AI302 Delhi → London — heavy rain
+      </button>
+      <button class="sug-btn" onclick="fillQuery('Flight 6E142 from Mumbai to Dubai is delayed 4 hours due to ATC restrictions. What should we do?')">
+        6E142 Mumbai → Dubai — ATC restrictions
+      </button>
+      <button class="sug-btn" onclick="fillQuery('Flight BA141 from Delhi to London has a critical engine maintenance issue. Should we cancel or substitute?')">
+        BA141 Delhi → London — engine MEL issue
+      </button>
+    </div>
+
+    <div class="messages" id="messages"></div>
+
+    <div class="chat-input-area">
+      <textarea id="queryInput" rows="2"
+        placeholder="Describe a flight delay situation..."
+        onkeydown="handleKey(event)"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="sendQuery()">Analyze</button>
+    </div>
+  </div>
+
+  <!-- ── Right: Tabs ── -->
+  <div class="right-panel">
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('orchestration', this)">Orchestration</button>
+      <button class="tab-btn" onclick="switchTab('output', this)">Final Response</button>
+    </div>
+
+    <!-- Orchestration tab -->
+    <div class="tab-content orchestration-tab active" id="tab-orchestration">
+      <p class="orch-header">
+        10 specialized agents work in sequence. Each card lights up when its agent is running,
+        turns green when complete. Click any completed card to read its full output.
+      </p>
+
+      <div class="pipeline" id="pipeline">
+
+        <!-- Row: Operations Manager (orchestrator) -->
+        <div class="pipeline-row">
+          <div class="agent-card" id="card-0" onclick="openModal(0)">
+            <div class="agent-num">ORCHESTRATOR</div>
+            <div class="agent-role">Operations Manager</div>
+            <div class="agent-task-name">Plans + delegates all tasks</div>
+            <div class="agent-status" id="status-0">Waiting</div>
+          </div>
+        </div>
+        <div class="pipeline-arrow" id="arrow-0">↓</div>
+
+        <!-- Row: Weather | Flight | Passenger (parallel-capable) -->
+        <div class="pipeline-row">
+          <div class="agent-card" id="card-1" onclick="openModal(1)">
+            <div class="agent-num">TASK 01</div>
+            <div class="agent-role">Weather Agent</div>
+            <div class="agent-task-name">WeatherTask</div>
+            <div class="agent-status" id="status-1">Waiting</div>
+            <div class="agent-elapsed" id="elapsed-1"></div>
+          </div>
+          <div class="agent-card" id="card-2" onclick="openModal(2)">
+            <div class="agent-num">TASK 02</div>
+            <div class="agent-role">Flight Agent</div>
+            <div class="agent-task-name">FlightTask</div>
+            <div class="agent-status" id="status-2">Waiting</div>
+            <div class="agent-elapsed" id="elapsed-2"></div>
+          </div>
+          <div class="agent-card" id="card-3" onclick="openModal(3)">
+            <div class="agent-num">TASK 03</div>
+            <div class="agent-role">Passenger Agent</div>
+            <div class="agent-task-name">PassengerTask</div>
+            <div class="agent-status" id="status-3">Waiting</div>
+            <div class="agent-elapsed" id="elapsed-3"></div>
+          </div>
+        </div>
+        <div class="pipeline-arrow" id="arrow-1">↓</div>
+
+        <!-- Row: Runway | Aircraft | Rebooking -->
+        <div class="pipeline-row">
+          <div class="agent-card" id="card-4" onclick="openModal(4)">
+            <div class="agent-num">TASK 04</div>
+            <div class="agent-role">Runway Agent</div>
+            <div class="agent-task-name">RunwayTask</div>
+            <div class="agent-status" id="status-4">Waiting</div>
+            <div class="agent-elapsed" id="elapsed-4"></div>
+          </div>
+          <div class="agent-card" id="card-5" onclick="openModal(5)">
+            <div class="agent-num">TASK 05</div>
+            <div class="agent-role">Aircraft Agent</div>
+            <div class="agent-task-name">AircraftTask</div>
+            <div class="agent-status" id="status-5">Waiting</div>
+            <div class="agent-elapsed" id="elapsed-5"></div>
+          </div>
+          <div class="agent-card" id="card-6" onclick="openModal(6)">
+            <div class="agent-num">TASK 06</div>
+            <div class="agent-role">Rebooking Agent</div>
+            <div class="agent-task-name">RebookingTask</div>
+            <div class="agent-status" id="status-6">Waiting</div>
+            <div class="agent-elapsed" id="elapsed-6"></div>
+          </div>
+        </div>
+        <div class="pipeline-arrow" id="arrow-2">↓</div>
+
+        <!-- Row: Decision Agent -->
+        <div class="pipeline-row">
+          <div class="agent-card" id="card-7" onclick="openModal(7)">
+            <div class="agent-num">TASK 07</div>
+            <div class="agent-role">Decision Agent</div>
+            <div class="agent-task-name">DecisionTask — synthesises all</div>
+            <div class="agent-status" id="status-7">Waiting</div>
+            <div class="agent-elapsed" id="elapsed-7"></div>
+          </div>
+        </div>
+        <div class="pipeline-arrow" id="arrow-3">↓</div>
+
+        <!-- Row: Compensation Agent -->
+        <div class="pipeline-row">
+          <div class="agent-card" id="card-8" onclick="openModal(8)">
+            <div class="agent-num">TASK 08</div>
+            <div class="agent-role">Compensation Agent</div>
+            <div class="agent-task-name">CompensationTask</div>
+            <div class="agent-status" id="status-8">Waiting</div>
+            <div class="agent-elapsed" id="elapsed-8"></div>
+          </div>
+        </div>
+        <div class="pipeline-arrow" id="arrow-4">↓</div>
+
+        <!-- Row: Review Agent -->
+        <div class="pipeline-row">
+          <div class="agent-card" id="card-9" onclick="openModal(9)">
+            <div class="agent-num">TASK 09</div>
+            <div class="agent-role">Review Agent</div>
+            <div class="agent-task-name">ReviewTask — QA + compliance</div>
+            <div class="agent-status" id="status-9">Waiting</div>
+            <div class="agent-elapsed" id="elapsed-9"></div>
+          </div>
+        </div>
+
+      </div><!-- /pipeline -->
+
+      <div class="db2-legend">
+        <div class="db2-dot"></div>
+        All agents query <strong style="color:var(--text);margin:0 4px">IBM Db2</strong> via the shared
+        <strong style="color:var(--text);margin:0 4px">Haystack Retrieval Pipeline</strong>
+        (embed → cosine search → rerank) for SOPs, policies, and regulations.
+      </div>
+
+    </div><!-- /orchestration tab -->
+
+    <!-- Final Response tab -->
+    <div class="tab-content output-tab" id="tab-output">
+      <div id="outputContent">
+        <p class="no-output">The final approved operational response will appear here after all agents complete.</p>
+      </div>
+    </div>
+
+  </div><!-- /right-panel -->
+</div><!-- /layout -->
+
+<!-- ── Agent detail modal ── -->
+<div class="modal-backdrop" id="modalBackdrop" onclick="closeModalOnBackdrop(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">Agent Output</h2>
+      <button class="close-btn" onclick="closeModal()">&#x2715;</button>
+    </div>
+    <div class="modal-meta">
+      <div class="kv"><span>Agent: </span><strong id="modalAgent">—</strong></div>
+      <div class="kv"><span>Task: </span><strong id="modalTask">—</strong></div>
+      <div class="kv"><span>Time: </span><strong id="modalElapsed">—</strong></div>
+    </div>
+    <div class="modal-body" id="modalBody">
+      <span class="modal-placeholder">Click a completed agent card to read its output.</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const API = '';   // same origin
+let running = false;
+let evtSource = null;
+
+// cardIndex 0 = Operations Manager (no task number, just orchestrator)
+// cardIndex 1..9 = tasks 1..9 (map to step in SSE event)
+const AGENT_META = [
+  { agent: "Operations Manager",             task: "Orchestrator",    desc: "Plans and delegates all tasks to specialist agents." },
+  { agent: "Aviation Meteorologist",          task: "WeatherTask",     desc: "Real-time weather, METAR + TAF for departure and arrival airports." },
+  { agent: "Flight Operations Specialist",    task: "FlightTask",      desc: "Live flight status, delay reason, tail number, alternative routing." },
+  { agent: "Passenger Services Manager",      task: "PassengerTask",   desc: "Full manifest: VIPs, special assistance, at-risk connections." },
+  { agent: "Airport Ground Operations Spec.", task: "RunwayTask",      desc: "Runway availability, NOTAMs, de-icing queue, gate status." },
+  { agent: "Aircraft Fleet Coordinator",      task: "AircraftTask",    desc: "Airworthiness, MEL items, fuel state, rotation cascade impact." },
+  { agent: "Airline Rebooking Specialist",    task: "RebookingTask",   desc: "Seat inventory search, priority rebooking plan, partner endorsements." },
+  { agent: "Crisis Decision Coordinator",     task: "DecisionTask",    desc: "Synthesises all inputs → DELAY / DIVERT / CANCEL / PROCEED." },
+  { agent: "Passenger Compensation Analyst",  task: "CompensationTask",desc: "EU261/DGCA entitlements: vouchers, hotel, cash compensation matrix." },
+  { agent: "QA and Compliance Reviewer",      task: "ReviewTask",      desc: "Final policy check, risk review → approved operational brief." },
+];
+
+// Stores agent output text keyed by cardIndex (0..9)
+const agentOutputs = {};
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ── Suggestions ───────────────────────────────────────────────────────────
+function fillQuery(text) {
+  document.getElementById('queryInput').value = text;
+  document.getElementById('queryInput').focus();
+  document.getElementById('suggestionsArea').style.display = 'none';
+}
+
+// ── Reset pipeline UI ─────────────────────────────────────────────────────
+function resetPipeline() {
+  for (let i = 0; i <= 9; i++) {
+    const card = document.getElementById('card-' + i);
+    if (!card) continue;
+    card.className = 'agent-card';
+    const st = document.getElementById('status-' + i);
+    if (st) st.textContent = 'Waiting';
+    const el = document.getElementById('elapsed-' + i);
+    if (el) el.textContent = '';
+  }
+  for (let i = 0; i <= 4; i++) {
+    const a = document.getElementById('arrow-' + i);
+    if (a) a.classList.remove('lit');
+  }
+  document.getElementById('outputContent').innerHTML =
+    '<p class="no-output">The final approved operational response will appear here after all agents complete.</p>';
+}
+
+// ── Messages ──────────────────────────────────────────────────────────────
+function addMessage(text, type) {
+  const wrap = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg ' + type;
+  div.textContent = text;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuery(); }
+}
+
+// ── Send query ─────────────────────────────────────────────────────────────
+function sendQuery() {
+  if (running) return;
+  const query = document.getElementById('queryInput').value.trim();
+  if (!query) return;
+
+  document.getElementById('queryInput').value = '';
+  document.getElementById('suggestionsArea').style.display = 'none';
+  running = true;
+  document.getElementById('sendBtn').disabled = true;
+  setStatus('Running', true);
+  setProgress(3);
+  resetPipeline();
+  Object.keys(agentOutputs).forEach(k => delete agentOutputs[k]);
+
+  addMessage(query, 'user');
+  addMessage('Crew kickoff — 9 agents starting...', 'system');
+
+  // Mark Operations Manager as running immediately
+  markRunning(0);
+
+  // Switch to orchestration tab
+  switchTab('orchestration', document.querySelector('.tab-btn'));
+
+  // Open SSE connection
+  const url = API + '/api/v1/analyze/stream?query=' + encodeURIComponent(query);
+  evtSource = new EventSource(url);
+
+  evtSource.addEventListener('agent_done', e => {
+    const d = JSON.parse(e.data);
+    const cardIdx = d.step;           // 1..9
+    agentOutputs[cardIdx] = d.output;
+    markDone(cardIdx, d.elapsed_s);
+    setProgress(Math.round((d.step / 9) * 95));
+    addMessage(`${d.agent} completed (${d.elapsed_s}s)`, 'system');
+
+    // light up the arrow below the previous row
+    lightArrow(cardIdx);
+
+    // Next agent starts
+    if (cardIdx < 9) markRunning(cardIdx + 1);
+  });
+
+  evtSource.addEventListener('final', e => {
+    const d = JSON.parse(e.data);
+    agentOutputs[0] = d.output;
+
+    // Operations manager card done
+    markDone(0, null);
+    setProgress(100);
+    setStatus('Idle', false);
+    running = false;
+    document.getElementById('sendBtn').disabled = false;
+    evtSource.close();
+
+    // Show final response in output tab
+    document.getElementById('outputContent').innerHTML =
+      '<div class="final-output">' + escHtml(d.output) + '</div>';
+
+    addMessage('All agents completed. Final response is ready.', 'system');
+    addMessage(d.output.slice(0, 280) + (d.output.length > 280 ? '...' : ''), 'assistant');
+
+    // Auto-switch to output tab
+    setTimeout(() => {
+      const outputBtn = document.querySelectorAll('.tab-btn')[1];
+      switchTab('output', outputBtn);
+    }, 600);
+  });
+
+  evtSource.addEventListener('error', e => {
+    let msg = 'Crew error';
+    try { msg = JSON.parse(e.data).message || msg; } catch(_) {}
+    addMessage('Error: ' + msg, 'system');
+    setStatus('Error', false);
+    running = false;
+    document.getElementById('sendBtn').disabled = false;
+    evtSource.close();
+    setProgress(0);
+  });
+
+  evtSource.onerror = () => {
+    if (!running) return;
+    addMessage('Connection lost. Is the server running?', 'system');
+    setStatus('Idle', false);
+    running = false;
+    document.getElementById('sendBtn').disabled = false;
+    setProgress(0);
+  };
+}
+
+// ── Pipeline card helpers ──────────────────────────────────────────────────
+function markRunning(cardIdx) {
+  const card = document.getElementById('card-' + cardIdx);
+  if (!card) return;
+  card.className = 'agent-card running';
+  const st = document.getElementById('status-' + cardIdx);
+  if (st) st.textContent = 'Running...';
+}
+
+function markDone(cardIdx, elapsedS) {
+  const card = document.getElementById('card-' + cardIdx);
+  if (!card) return;
+  card.className = 'agent-card done';
+  const st = document.getElementById('status-' + cardIdx);
+  if (st) st.textContent = 'Done';
+  const el = document.getElementById('elapsed-' + cardIdx);
+  if (el && elapsedS != null) el.textContent = elapsedS + 's';
+}
+
+// arrowIndex mapping: after step 3 → arrow-1, after step 6 → arrow-2, etc.
+function lightArrow(step) {
+  const map = { 1: 0, 2: 0, 3: 0, 4: 1, 5: 1, 6: 1, 7: 2, 8: 3, 9: 4 };
+  const idx = map[step];
+  if (idx != null) {
+    const a = document.getElementById('arrow-' + idx);
+    if (a) a.classList.add('lit');
+  }
+}
+
+// ── Modal ──────────────────────────────────────────────────────────────────
+function openModal(cardIdx) {
+  const meta = AGENT_META[cardIdx];
+  if (!meta) return;
+  const output = agentOutputs[cardIdx];
+  document.getElementById('modalTitle').textContent = meta.agent;
+  document.getElementById('modalAgent').textContent = meta.agent;
+  document.getElementById('modalTask').textContent = meta.task;
+  const el = document.getElementById('elapsed-' + cardIdx);
+  document.getElementById('modalElapsed').textContent = (el && el.textContent) ? el.textContent : '—';
+  document.getElementById('modalBody').innerHTML = output
+    ? escHtml(output)
+    : '<span class="modal-placeholder">This agent has not run yet, or its output is not available.</span>';
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modalBackdrop').classList.remove('open');
+}
+function closeModalOnBackdrop(e) {
+  if (e.target === document.getElementById('modalBackdrop')) closeModal();
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+// ── Status badge + progress bar ────────────────────────────────────────────
+function setStatus(label, live) {
+  const b = document.getElementById('statusBadge');
+  b.textContent = label;
+  b.className = 'badge' + (live ? ' live' : '');
+}
+function setProgress(pct) {
+  document.getElementById('progressBar').style.width = pct + '%';
+  if (pct === 0 || pct === 100) {
+    setTimeout(() => { document.getElementById('progressBar').style.width = '0%'; }, 1200);
+  }
+}
+
+// ── Escape HTML ────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/\n/g,'<br>');
+}
+</script>
+</body>
+</html>

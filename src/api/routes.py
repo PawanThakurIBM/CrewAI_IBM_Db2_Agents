@@ -1,33 +1,58 @@
-"""API routes for the Airline Delay Management Assistant."""
+"""
+API routes — REST + Server-Sent Events streaming endpoint.
+
+POST /api/v1/analyze          → standard JSON response (blocking)
+GET  /api/v1/analyze/stream   → SSE stream: fires events as each agent completes
+GET  /api/v1/health           → health check
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import queue
+import threading
 import time
+from typing import AsyncGenerator
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
+from sse_starlette.sse import EventSourceResponse
 
-from src.api.schemas import DelayRequest, DelayResponse
+from src.api.schemas import AgentEvent, DelayRequest, DelayResponse
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 router = APIRouter()
 
+# ── Task metadata mirrored from airline_crew.py ──────────────────────────────
+_TASK_META = [
+    (1, "WeatherTask",      "Aviation Meteorologist",              "Real-time weather, METAR + TAF assessment for DEL and LHR"),
+    (2, "FlightTask",       "Flight Operations Specialist",        "Live flight status, delay reason, tail number, alternatives"),
+    (3, "PassengerTask",    "Passenger Services Manager",          "Full manifest: VIPs, special assistance, at-risk connections"),
+    (4, "RunwayTask",       "Airport Ground Operations Specialist", "Runway availability, NOTAMs, de-icing, gate status"),
+    (5, "AircraftTask",     "Aircraft Fleet Coordinator",          "Airworthiness, MEL items, fuel state, rotation cascade"),
+    (6, "RebookingTask",    "Airline Rebooking Specialist",        "Seat inventory, priority rebooking plan, partner endorsements"),
+    (7, "DecisionTask",     "Crisis Decision Coordinator",         "Synthesise all inputs → DELAY / DIVERT / CANCEL / PROCEED"),
+    (8, "CompensationTask", "Passenger Compensation Analyst",      "EU261/DGCA entitlements, vouchers, hotel, cash compensation"),
+    (9, "ReviewTask",       "QA and Compliance Reviewer",          "Final policy check, risk review → approved operational brief"),
+]
+
+
+# ── Standard blocking endpoint ────────────────────────────────────────────────
 
 @router.post(
     "/analyze",
     response_model=DelayResponse,
-    summary="Analyze a flight delay situation",
-    description=(
-        "Submit a flight delay report in natural language. "
-        "The multi-agent crew will analyze weather, flight status, passengers, "
-        "aircraft, runway, rebooking options, and compensation entitlements, "
-        "then return a fully reviewed operational response."
-    ),
+    summary="Analyze a flight delay situation (blocking)",
 )
 async def analyze_delay(request: DelayRequest) -> DelayResponse:
     logger.info("analyze_endpoint_called", query=request.query)
     start = time.time()
     try:
-        # Import here to avoid circular imports at module load time
         from src.crew.airline_crew import run as crew_run
-        response = crew_run(request.query)
+        response = await asyncio.get_event_loop().run_in_executor(
+            None, crew_run, request.query
+        )
         elapsed = round(time.time() - start, 2)
         logger.info("analyze_endpoint_success", elapsed_seconds=elapsed)
         return DelayResponse(query=request.query, response=response, elapsed_seconds=elapsed)
@@ -36,6 +61,138 @@ async def analyze_delay(request: DelayRequest) -> DelayResponse:
         raise HTTPException(status_code=500, detail=f"Crew execution failed: {exc}") from exc
 
 
+# ── SSE streaming endpoint ────────────────────────────────────────────────────
+
+def _run_crew_with_events(query: str, event_queue: queue.Queue) -> None:
+    """
+    Run the full crew in a background thread.
+    Patches each task callback to also push SSE events into `event_queue`.
+    """
+    import time as _time
+    from src.tasks.weather_task import make_weather_task
+    from src.tasks.flight_task import make_flight_task
+    from src.tasks.passenger_task import make_passenger_task
+    from src.tasks.runway_task import make_runway_task
+    from src.tasks.aircraft_task import make_aircraft_task
+    from src.tasks.rebooking_task import make_rebooking_task
+    from src.tasks.decision_task import make_decision_task
+    from src.tasks.compensation_task import make_compensation_task
+    from src.tasks.review_task import make_review_task
+    from src.agents.operations_manager import operations_manager
+    from src.agents.weather_agent import weather_agent
+    from src.agents.flight_agent import flight_agent
+    from src.agents.passenger_agent import passenger_agent
+    from src.agents.runway_agent import runway_agent
+    from src.agents.aircraft_agent import aircraft_agent
+    from src.agents.rebooking_agent import rebooking_agent
+    from src.agents.decision_agent import decision_agent
+    from src.agents.compensation_agent import compensation_agent
+    from src.agents.review_agent import review_agent
+    from crewai import Crew, Process
+
+    step_starts: dict[int, float] = {}
+
+    def _make_cb(step: int, task_name: str, agent_name: str, description: str):
+        step_starts[step] = _time.time()
+
+        def _cb(output):
+            elapsed = round(_time.time() - step_starts.get(step, _time.time()), 1)
+            output_text = str(output.raw) if hasattr(output, "raw") else str(output)
+            event_queue.put(AgentEvent(
+                event="agent_done",
+                step=step,
+                total=9,
+                agent=agent_name,
+                task=task_name,
+                description=description,
+                output=output_text,
+                elapsed_s=elapsed,
+            ))
+        return _cb
+
+    try:
+        # Fire agent_start events immediately so the UI lights up
+        for step, task_name, agent_name, description in _TASK_META:
+            step_starts[step] = _time.time()
+
+        # Build tasks
+        t_weather    = make_weather_task(query)
+        t_flight     = make_flight_task(query)
+        t_passenger  = make_passenger_task(query)
+        t_runway     = make_runway_task(t_weather, t_flight)
+        t_aircraft   = make_aircraft_task(t_weather, t_flight)
+        t_rebooking  = make_rebooking_task(t_passenger, t_flight)
+        t_decision   = make_decision_task(t_weather, t_flight, t_passenger, t_runway, t_aircraft, t_rebooking)
+        t_compensation = make_compensation_task(t_decision, t_passenger)
+        t_review     = make_review_task(t_decision, t_compensation)
+
+        for task_obj, (step, task_name, agent_name, description) in zip(
+            [t_weather, t_flight, t_passenger, t_runway, t_aircraft,
+             t_rebooking, t_decision, t_compensation, t_review],
+            _TASK_META,
+        ):
+            task_obj.callback = _make_cb(step, task_name, agent_name, description)
+
+        crew = Crew(
+            agents=[operations_manager, weather_agent, flight_agent, passenger_agent,
+                    runway_agent, aircraft_agent, rebooking_agent,
+                    decision_agent, compensation_agent, review_agent],
+            tasks=[t_weather, t_flight, t_passenger, t_runway, t_aircraft,
+                   t_rebooking, t_decision, t_compensation, t_review],
+            process=Process.sequential,
+            verbose=False,
+        )
+
+        result = crew.kickoff()
+        final_text = str(result.raw) if hasattr(result, "raw") else str(result)
+        event_queue.put(AgentEvent(event="final", output=final_text))
+
+    except Exception as exc:
+        logger.error("sse_crew_error", error=str(exc))
+        event_queue.put(AgentEvent(event="error", message=str(exc)))
+    finally:
+        event_queue.put(None)  # sentinel — tells generator to stop
+
+
+@router.get(
+    "/analyze/stream",
+    summary="Analyze a flight delay situation (SSE streaming)",
+    description="Pass ?query=... as a URL parameter. Streams agent events as Server-Sent Events.",
+)
+async def analyze_stream(query: str, request: Request):
+    logger.info("sse_endpoint_called", query=query[:80])
+    event_q: queue.Queue = queue.Queue()
+
+    # Run crew in background thread — doesn't block the event loop
+    thread = threading.Thread(
+        target=_run_crew_with_events,
+        args=(query, event_q),
+        daemon=True,
+    )
+    thread.start()
+
+    async def _generator() -> AsyncGenerator[dict, None]:
+        loop = asyncio.get_event_loop()
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                item = await loop.run_in_executor(None, event_q.get, True, 1.0)
+            except queue.Empty:
+                # Keep-alive ping
+                yield {"event": "ping", "data": "{}"}
+                continue
+
+            if item is None:
+                break
+
+            yield {"event": item.event, "data": item.model_dump_json()}
+
+    return EventSourceResponse(_generator())
+
+
+# ── Health check ──────────────────────────────────────────────────────────────
+
 @router.get("/health", summary="Health check")
 async def health() -> dict:
-    return {"status": "ok", "service": "Airline Delay Management Assistant"}
+    return {"status": "ok", "service": "Airline Delay Management Assistant", "version": "1.0.0"}
