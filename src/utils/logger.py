@@ -31,6 +31,9 @@ _SUPPRESS_PATTERNS = re.compile(
     r"|OpenAI API usage"
     r"|\[Finalize\]"
     r"|todos_count="
+    r"|changes detected"
+    r"|Using config path"
+    r"|config path:"
 )
 
 
@@ -136,8 +139,8 @@ def configure_logging() -> None:
         "httpx", "httpcore", "urllib3", "requests",
         "sentence_transformers", "transformers", "torch",
         "huggingface_hub", "filelock", "h11",
-        "openai",
-        "litellm",
+        "openai", "litellm",
+        "watchfiles", "watchfiles.main",
     ):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
@@ -146,6 +149,7 @@ def configure_logging() -> None:
     logging.getLogger("crewai").setLevel(logging.WARNING)
     logging.getLogger("crewai.llms").setLevel(logging.WARNING)
     logging.getLogger("crewai.experimental").setLevel(logging.WARNING)
+    logging.getLogger("crewai.utilities.config_loader").setLevel(logging.WARNING)
 
     _CONFIGURED = True
 

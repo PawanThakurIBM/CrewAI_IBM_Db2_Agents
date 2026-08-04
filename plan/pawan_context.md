@@ -2,8 +2,7 @@
 
 Hi Pawan! Welcome to the project.
 
-This document gives you everything you need to get started and understand your role.
-Read this fully before diving into code.
+This document is your single source of truth. Read it fully before looking at any code.
 
 ---
 
@@ -22,289 +21,262 @@ The system automatically coordinates weather analysis, flight status checks, pas
 
 ---
 
-## Technology Stack
+## Current State — What's Already Built
 
-| Component       | Technology                                |
-|-----------------|-------------------------------------------|
-| Orchestration   | CrewAI                                    |
-| LLM             | **Ollama (local) — `granite3.3` model**   |
-| Knowledge Store | **Haystack** + **IBM Db2** (Vector + Doc) |
-| API Backend     | FastAPI                                   |
-| Language        | Python 3.11+                              |
-| Embeddings      | `sentence-transformers/all-MiniLM-L6-v2`  |
-| Reranker        | `cross-encoder/ms-marco-MiniLM-L-6-v2`   |
+The project is **fully implemented and running end-to-end**. Below is the status split by owner.
+
+### Dhruv has already built:
+- ✅ All 10 CrewAI agents (`src/agents/`)
+- ✅ All 9 CrewAI tasks with dependency chains (`src/tasks/`)
+- ✅ Crew orchestration (`src/crew/airline_crew.py`)
+- ✅ External API tools — weather, flight, airport (`src/tools/`)
+- ✅ Mock enterprise services — passenger, fleet, booking (`src/mock_services/`)
+- ✅ FastAPI backend with SSE streaming (`src/api/`)
+- ✅ Carbon Design System web UI (`static/index.html`)
+- ✅ Configuration and logging (`src/config/`, `src/utils/`)
+
+### You (Pawan) own — already implemented or ready for your review:
+- ✅ IBM Db2 schema (2 tables — documents + vectors)
+- ✅ 20 enterprise knowledge documents (`src/data/`)
+- ✅ Haystack ingestion pipeline (`src/knowledge/ingestion_pipeline.py`)
+- ✅ IBM Db2 Document Store (`src/knowledge/db2_document_store.py`)
+- ✅ IBM Db2 Vector Store (`src/knowledge/db2_vector_store.py`)
+- ✅ Haystack retrieval pipeline (`src/knowledge/retrieval_pipeline.py`)
+- ✅ IBM Db2 Search Tool (`src/tools/db2_search_tool.py`) — THE integration point
+- ✅ Tests for knowledge pipeline (`tests/test_knowledge/`)
+- ✅ Test for search tool (`tests/test_tools/test_db2_search_tool.py`)
 
 ---
 
-## The Two Work Streams
+## Technology Stack
 
-The project is divided between **Dhruv** (CrewAI side) and **you, Pawan** (Haystack + IBM Db2 side).
-
-### Dhruv owns:
-- All 10 CrewAI agents
-- All CrewAI tasks and crew orchestration
-- External API tools (weather, flight, airport)
-- Mock enterprise services (passenger, fleet, booking)
-- FastAPI backend
-- Configuration and logging
-
-### You (Pawan) own:
-- IBM Db2 setup and schema
-- Enterprise knowledge dataset (20 documents)
-- Haystack ingestion pipeline
-- IBM Db2 Document Store integration
-- IBM Db2 Vector Store integration
-- Haystack retrieval pipeline (with reranker)
-- IBM Db2 Search Tool (the CrewAI tool that wraps Haystack)
-
-**The integration point** — what Dhruv's agents call and what you build — is the `IBM Db2 Search Tool` in `src/tools/db2_search_tool.py`. This is the most critical interface between the two work streams.
+| Component       | Technology                                  |
+|-----------------|---------------------------------------------|
+| Orchestration   | CrewAI                                      |
+| LLM             | **Ollama (local) — `granite3.3:8b`**        |
+| Knowledge Store | **Haystack** + **IBM Db2** (Vector + Doc)   |
+| API Backend     | FastAPI                                     |
+| Language        | Python 3.11+                                |
+| Embeddings      | `sentence-transformers/all-MiniLM-L6-v2` (384-dim) |
+| Reranker        | `cross-encoder/ms-marco-MiniLM-L-6-v2`     |
 
 ---
 
 ## Architecture Overview
 
 ```
-User Request (FastAPI)
-        │
-        ▼
+User Request (FastAPI → static/index.html)
+         │
+         ▼
 Operations Manager Agent  ← CrewAI (Dhruv)
-        │
-        ├──► Weather Agent ──► weather API
-        ├──► Flight Agent  ──► flight API
-        └──► Passenger Agent ──► mock PSS
-                │
-        ┌───────┴────────┐
-        ▼                ▼
-  Runway Agent      Aircraft Agent    Rebooking Agent
-        │                │                 │
-        └────────┬────────┘                │
-                 ▼                         ▼
-          Decision Agent ──────────► Compensation Agent
+         │
+         ├──► Weather Agent ──► weather API (OpenWeatherMap + aviationweather.gov)
+         ├──► Flight Agent  ──► flight API (AviationStack + OpenSky)
+         └──► Passenger Agent ──► mock PSS
                  │
-                 ▼
-          Review Agent
-                 │
-                 ▼
-          Final Response
+         ┌───────┴────────┐
+         ▼                ▼
+   Runway Agent      Aircraft Agent    Rebooking Agent
+   (← weather)       (← flight)        (← passenger + flight)
+         │                │                 │
+         └────────┬────────┘                │
+                  ▼                         ▼
+           Decision Agent  ──────────► Compensation Agent
+                  │
+                  ▼
+           Review Agent
+                  │
+                  ▼
+           Final Response (streamed via SSE)
 
-          ─────────────────────────────────────────
-          ALL AGENTS  ──►  IBM Db2 Search Tool (YOU)
-          ─────────────────────────────────────────
-                 │
-                 ▼
-          Haystack Retrieval Pipeline
-          [Query Embedder → Retriever → Reranker → Answer Builder]
-                 │
-                 ▼
-          IBM Db2 Vector Store + Document Store
+  ─────────────────────────────────────────────────
+  ALL AGENTS  ──►  IBM Db2 Search Tool  (YOUR FILE)
+  ─────────────────────────────────────────────────
+                  │
+                  ▼
+        Haystack Retrieval Pipeline
+        [Query Embedder → Retriever → Reranker]
+                  │
+                  ▼
+        IBM Db2 Vector Store + Document Store
 ```
 
-Every single agent (all 10) calls your `db2_search_tool` whenever they need to look up policies, SOPs, regulations, or procedures. This is the backbone of the system.
+Every single agent (all 10) calls your `db2_search_tool` whenever they need to look up policies, SOPs, regulations, or procedures.
 
 ---
 
-## Your Tasks — Detailed
-
-### P1 · IBM Db2 Setup
-
-Configure IBM Db2 and create the schema needed for Haystack.
-
-You will need two tables:
-- One for **document store** (document id, content, metadata)
-- One for **vector store** (document id, embedding vector, metadata)
-
-Store credentials in `.env` (never commit real credentials).
-
-Required env variables:
-```env
-DB2_HOST=
-DB2_PORT=
-DB2_DATABASE=
-DB2_USERNAME=
-DB2_PASSWORD=
-```
-
----
-
-### P2 · Enterprise Knowledge Dataset
-
-Create 20 realistic airline enterprise documents under `src/data/`.
-
-**Folder structure:**
-```
-src/data/
-├── sops/           ← Standard Operating Procedures (5 docs)
-├── policies/       ← Passenger rights, compensation, rebooking (5 docs)
-├── manuals/        ← Ops manuals for crew, ground, aircraft, airport (4 docs)
-├── regulations/    ← EU261/2004, DGCA, IATA delay codes (3 docs)
-└── faqs/           ← Passenger FAQ, crew FAQ, ops FAQ (3 docs)
-```
-
-**Guidelines for writing documents:**
-- Plain English markdown format
-- 400–800 words per document
-- Use realistic airline terminology (IATA codes, ICAO, MEL, FDP, NOTAM)
-- Base content on publicly available IATA, EU, and DGCA guidelines — don't copy, paraphrase
-- Include specific numeric thresholds (e.g., "meals after 2 hours", "€250 for flights under 1500km")
-- Documents should read like real internal airline policy documents
-
-Full document list and specs are in `plan/knowledge_dataset.md`.
-
----
-
-### P3 · Haystack Ingestion Pipeline
-
-**File:** `src/knowledge/ingestion_pipeline.py`
-
-Steps:
-1. Load all `.md` files from `src/data/` recursively
-2. Clean and normalize text
-3. Split into chunks: **512 tokens, 50 token overlap**
-4. Generate embeddings using `sentence-transformers/all-MiniLM-L6-v2`
-5. Store document chunks in IBM Db2 Document Store
-6. Store embeddings in IBM Db2 Vector Store
-
-Also create `scripts/ingest_knowledge.py` — a CLI script to run this end-to-end with progress logging.
-
----
-
-### P4 · IBM Db2 Document Store + Vector Store
-
-**Files:**
-- `src/knowledge/db2_document_store.py`
-- `src/knowledge/db2_vector_store.py`
-
-These must follow Haystack's `DocumentStore` interface so the retrieval pipeline can use them.
-
-The Document Store stores the raw text chunks and metadata.
-The Vector Store stores the embedding vectors and supports cosine similarity search.
-
----
-
-### P5 · Haystack Retrieval Pipeline
-
-**File:** `src/knowledge/retrieval_pipeline.py`
-
-Steps:
-1. Accept a query string
-2. Embed the query using the same model (`all-MiniLM-L6-v2`)
-3. Perform cosine similarity search against IBM Db2 Vector Store (top-k=10)
-4. Rerank results using `cross-encoder/ms-marco-MiniLM-L-6-v2` (return top 5)
-5. Fetch full document text from Document Store
-6. Return formatted list of documents
-
-This is the pipeline that the IBM Db2 Search Tool calls.
-
----
-
-### P6 · IBM Db2 Search Tool (THE INTEGRATION POINT)
-
-**File:** `src/tools/db2_search_tool.py`
-
-This is the most important file you will write. Dhruv's agents call this.
-
-Requirements:
-- Must subclass `crewai.tools.BaseTool`
-- `name = "IBM Db2 Enterprise Knowledge Search"`
-- `description` — a clear one-paragraph description that agents use to decide when to call this tool
-- `_run(query: str) -> str` — calls the retrieval pipeline and formats results as readable text
-
-Example output format:
-```
-[Document 1 — flight_delay_sop.md]
-Passengers must be provided meals after a 2-hour delay...
-
-[Document 2 — compensation_policy.md]
-For delays exceeding 3 hours on EU routes, cash compensation of €250 applies...
-```
-
----
-
-### P7 · Testing
-
-- Unit test for ingestion pipeline (with a small test document set)
-- Unit test for retrieval pipeline (mocked Db2)
-- Unit test for IBM Db2 Search Tool
-
----
-
-## Integration Point with Dhruv
-
-Once both sides are done:
-
-1. You run `python scripts/ingest_knowledge.py` to populate Db2
-2. Dhruv imports your `db2_search_tool` into all agent definitions
-3. We run the crew end-to-end with the sample query
-
-**Critical:** Your `db2_search_tool._run()` must return a string (not a list).
-CrewAI tools must always return strings. Dhruv's agents depend on this contract.
-
----
-
-## File Locations Summary — Your Files
+## Your Files — What You Own
 
 ```
 src/
 ├── tools/
-│   └── db2_search_tool.py          ← P6 (THE integration point)
+│   └── db2_search_tool.py          ← THE integration point (all agents call this)
 ├── knowledge/
-│   ├── ingestion_pipeline.py       ← P3
-│   ├── retrieval_pipeline.py       ← P5
-│   ├── db2_document_store.py       ← P4
-│   └── db2_vector_store.py         ← P4
+│   ├── ingestion_pipeline.py       ← Loads docs → chunks → embeds → stores in Db2
+│   ├── retrieval_pipeline.py       ← embed → cosine → rerank → format string
+│   ├── db2_document_store.py       ← AIRLINE_KB.DOCUMENTS
+│   └── db2_vector_store.py         ← AIRLINE_KB.VECTORS (cosine similarity)
 ├── data/
-│   ├── sops/                       ← P2
-│   ├── policies/                   ← P2
-│   ├── manuals/                    ← P2
-│   ├── regulations/                ← P2
-│   └── faqs/                       ← P2
+│   ├── sops/           (5 docs)
+│   ├── policies/       (5 docs)
+│   ├── manuals/        (4 docs)
+│   ├── regulations/    (3 docs)
+│   └── faqs/           (3 docs)
 scripts/
-└── ingest_knowledge.py             ← P3 CLI runner
+└── ingest_knowledge.py             ← CLI runner (populates Db2)
 tests/
-└── test_knowledge/                 ← P7
+├── test_knowledge/
+│   ├── test_ingestion_pipeline.py
+│   ├── test_retrieval_pipeline.py
+│   ├── test_db2_document_store.py
+│   └── test_db2_vector_store.py
+└── test_tools/
+    └── test_db2_search_tool.py
 ```
 
 ---
 
-## Key Dependencies (for your side)
+## The Most Important Contract
 
-```txt
-haystack-ai
-ibm-db
-ibm-db-sa
-sentence-transformers
-torch
-transformers
+**`db2_search_tool._run()` must always return a plain string.**
+
+This is non-negotiable. CrewAI tools return strings — agents cannot handle lists or dicts.
+
+### Return format:
+```
+[Document 1 — compensation_policy.md]
+For delays exceeding 3 hours on EU routes, passengers are entitled to cash compensation...
+
+[Document 2 — eu261_2004_regulation.md]
+Article 7 specifies compensation of €250 for flights under 1500km...
+
+[Document 3 — passenger_rights_policy.md]
+Airlines must provide meals and refreshments after a delay of 2 hours or more...
+```
+
+### Rules:
+- Always return a string (never raise an exception to the caller)
+- If nothing found: return `"No relevant documents found for: {query}"`
+- Return 3–5 documents maximum
+- Each block starts with `[Document N — filename.md]`
+
+---
+
+## IBM Db2 Tables
+
+| Table                    | Purpose                          |
+|--------------------------|----------------------------------|
+| `AIRLINE_KB.DOCUMENTS`   | Raw text chunks + metadata       |
+| `AIRLINE_KB.VECTORS`     | 384-dim embeddings (all-MiniLM)  |
+
+**Create these before running ingestion.** SQL is in `plan/setup_guide.md` Step 6.
+
+---
+
+## Haystack Pipeline Parameters
+
+| Parameter        | Value                                         |
+|------------------|-----------------------------------------------|
+| Chunk size       | 512 tokens                                    |
+| Chunk overlap    | 50 tokens                                     |
+| Embedding model  | `sentence-transformers/all-MiniLM-L6-v2`      |
+| Vector dimensions| 384                                           |
+| Retrieval top-k  | 10 (vector search) → 5 (after rerank)         |
+| Reranker         | `cross-encoder/ms-marco-MiniLM-L-6-v2`        |
+
+**Do not change the embedding model.** Changing it invalidates all stored vectors.
+
+---
+
+## Environment Variables You Need
+
+```env
+DB2_HOST=
+DB2_PORT=50000
+DB2_DATABASE=BLUDB
+DB2_USERNAME=
+DB2_PASSWORD=
+```
+
+Add these to `.env` (copy from `.env.example`). Never commit real credentials.
+
+---
+
+## Getting Started (First-Time Setup)
+
+```bash
+# 1. Clone the repo
+git clone git@github-ibm:PawanThakurIBM/CrewAI_IBM_Db2_Agents.git
+cd CrewAI_IBM_Db2_Agents
+
+# 2. Create virtual environment
+python3.11 -m venv .venv
+source .venv/bin/activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Set up .env
+cp .env.example .env
+# Fill in DB2 credentials in .env
+
+# 5. Create Db2 schema (run SQL from plan/setup_guide.md Step 6)
+
+# 6. Ingest knowledge documents
+python scripts/ingest_knowledge.py
+
+# 7. Start the server
+uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
+
+# 8. Open http://127.0.0.1:8000 in your browser
+```
+
+Full detailed instructions are in `plan/setup_guide.md`.
+
+---
+
+## Running Your Tests
+
+```bash
+# Test knowledge pipeline
+pytest tests/test_knowledge/
+
+# Test search tool
+pytest tests/test_tools/
+
+# All tests
+pytest
 ```
 
 ---
 
-## Getting Started
+## What Dhruv Is Working On (For Reference)
 
-1. Clone the repo
-2. Create `.env` from `.env.example` and fill in your IBM Db2 credentials
-3. Read `plan/context.md` for full project overview
-4. Read `plan/architecture.md` for system design and folder structure
-5. Read `plan/tasks.md` for the full task list (your tasks are labeled P1–P7)
-6. Read `plan/knowledge_dataset.md` for document writing specs
-7. Start with **P1** (Db2 setup) → **P2** (write the documents) → **P3–P5** (pipeline) → **P6** (search tool)
-
-**Start with P2 (knowledge dataset) in parallel with P1** — you can write documents while Db2 is being configured.
+- Agent unit tests (`tests/test_agents/`)
+- API endpoint tests (`tests/test_api/`)
+- Optional: `notification_tool.py` (SendGrid email alerts)
 
 ---
 
 ## Questions or Blockers
 
 Coordinate with Dhruv on:
-- The exact return format of `db2_search_tool._run()` (agree on this early)
-- The `.env` variable names so both sides use the same keys
-- Whether to use `ibm-db` directly or an ORM for Db2 access
+- Any change to `db2_search_tool._run()` return format — agents depend on this
+- Any change to `.env` variable names — both sides must match
+- Any change to the embedding model — requires full re-ingestion
 
 ---
 
-*Full project context:* `plan/context.md`
-*Architecture:* `plan/architecture.md`
-*All tasks:* `plan/tasks.md`
-*Agent specs:* `plan/agents.md`
-*API research:* `plan/api_research.md`
-*Dataset spec:* `plan/knowledge_dataset.md`
+## Reference Documents in `plan/`
+
+| File                   | What's In It                                              |
+|------------------------|-----------------------------------------------------------|
+| `context.md`           | Full project overview and objectives                      |
+| `architecture.md`      | System architecture, folder structure, work division      |
+| `tasks.md`             | Full task breakdown (D1–D8 Dhruv, P1–P7 Pawan)           |
+| `agents.md`            | All 10 agent specifications                               |
+| `api_research.md`      | External API comparison and selection decisions           |
+| `knowledge_dataset.md` | Per-document writing specs for all 20 knowledge files     |
+| `project_status.md`    | Current completion checklist                              |
+| `setup_guide.md`       | Step-by-step setup and run guide                          |
+| `integration_guide.md` | Exact Dhruv ↔ Pawan contracts and sync points            |

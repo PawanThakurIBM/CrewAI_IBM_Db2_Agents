@@ -1,0 +1,580 @@
+<p style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: #0f62fe; font-weight: 500; margin: 0 0 12px;">Open Source · IBM Db2 · CrewAI · Haystack · Multi-Agent Orchestration</p>
+<h1 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 40px; line-height: 1.2; color: #161616; margin: 0 0 16px;">10-Agent Airline Delay Management: Enterprise Orchestration with CrewAI and IBM Db2</h1>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 20px; line-height: 1.6; color: #525252; margin: 0 0 24px;">One flight delay query. Ten specialized agents. A single reviewed operational response. This is how production-grade multi-agent orchestration works — every agent grounded in enterprise knowledge retrieved from IBM Db2, context flowing from agent to agent until a QA-validated brief is ready.</p>
+<table style="width: 100%; border-collapse: collapse; margin: 0 0 32px; font-family: 'IBM Plex Sans', sans-serif; border-top: 1px solid #E0E0E0; border-bottom: 1px solid #E0E0E0;" cellpadding="0" cellspacing="0">
+<tbody>
+<tr>
+<td style="padding: 16px 0px; width: 48.6505%;"><span style="display: block; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #6f6f6f; margin-bottom: 4px;">   Written by</span><span style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; font-size: 16px; color: #161616;">   Pawan Thakur</span><span style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 16px; color: #8d8d8d; padding: 0 8px;">·</span><span style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; font-size: 16px; color: #161616;">Dhruv Chaturvedi</span></td>
+<td style="padding: 16px 0px; vertical-align: bottom; text-align: center; width: 51.3495%;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: #6f6f6f;">Contributors, crewai-tools</span></td>
+</tr>
+</tbody>
+</table>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">CrewAI is one of the fastest-growing frameworks for building multi-agent AI systems — teams of autonomous agents that plan, delegate, and collaborate to complete complex tasks. But agents are only useful if they can access real information. To close that gap for IBM Db2 users, we contributed the <strong style="font-weight: 600;">IBM Db2 Vector Search Tool</strong> to the official <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">crewai-tools</code> library.</p>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">The tool is deliberately <strong style="font-weight: 600;">retrieval-only</strong>, which means you keep full control of how documents get into Db2 in the first place. In this article we'll use Haystack and the IBM Db2 integration to build that ingestion side, then hand the resulting tables to a CrewAI crew — but the ingestion layer is yours to choose. LangChain, Langflow, a nightly ETL job, or a plain Python script all work equally well, because the contract between the two halves is nothing more than a Db2 table with a <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">VECTOR</code> column.</p>
+<table style="width: 100%; border-collapse: collapse; margin: 24px 0; font-family: 'IBM Plex Sans', sans-serif;" cellpadding="0" cellspacing="0">
+<tbody>
+<tr>
+<td style="background: #F4F4F4; border: 1px solid #E0E0E0; padding: 14px 18px;"><span style="display: block; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #6f6f6f;">Package</span><span style="font-weight: 600; font-size: 15px; color: #161616;">crewai-tools</span></td>
+<td style="background: #F4F4F4; border: 1px solid #E0E0E0; padding: 14px 18px;"><span style="display: block; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #6f6f6f;">Tool Class</span><span style="font-weight: 600; font-size: 15px; color: #161616;">DB2VectorSearchTool</span></td>
+<td style="background: #F4F4F4; border: 1px solid #E0E0E0; padding: 14px 18px;"><span style="display: block; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #6f6f6f;">Requires</span><span style="font-weight: 600; font-size: 15px; color: #161616;">Db2 12.1.2</span></td>
+<td style="background: #F4F4F4; border: 1px solid #E0E0E0; padding: 14px 18px;"><span style="display: block; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #6f6f6f;">Models used here</span><span style="font-weight: 600; font-size: 15px; color: #161616;">all-MiniLM-L6-v2 (embed) · ms-marco-MiniLM-L-6-v2 (rerank) · granite3.3:8b (reason)</span></td>
+</tr>
+</tbody>
+</table>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">What You'll Learn</h2>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">By the end of this article, you'll understand:</p>
+<ul style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616; margin: 0 0 20px; padding-left: 22px;">
+<li style="margin-bottom: 6px;">How to design a 10-agent CrewAI system where every agent has a distinct, non-overlapping responsibility</li>
+<li style="margin-bottom: 6px;">How context flows through a task dependency chain — so downstream agents build on prior work instead of repeating it</li>
+<li style="margin-bottom: 6px;">How to populate IBM Db2 with enterprise knowledge using a Haystack ingestion pipeline (and why you can swap it for LangChain or LlamaIndex without touching the crew)</li>
+<li style="margin-bottom: 6px;">How to build a single <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">BaseTool</code> that wraps embed → cosine similarity → cross-encoder rerank and returns grounded excerpts to any agent</li>
+<li style="margin-bottom: 6px;">How to assemble the full crew with <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">Process.sequential</code> and per-task callbacks for structured execution logging</li>
+<li style="margin-bottom: 6px;">How to expose the crew as a Server-Sent Events streaming endpoint so the UI shows each agent completing in real time</li>
+<li style="margin-bottom: 6px;">Production considerations: local Ollama LLM, least-privilege Db2 credentials, SSE keep-alive, and background thread execution</li>
+</ul>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">What is CrewAI?</h2>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">CrewAI is an open-source Python framework for orchestrating role-based, autonomous AI agents. Instead of chaining fixed steps together like a traditional pipeline, CrewAI lets you define a <strong style="font-weight: 600;">crew</strong> of agents, each with a role, a goal, and a backstory, and hand them a set of <strong style="font-weight: 600;">tasks</strong> and <strong style="font-weight: 600;">tools</strong>. The agents then plan and reason about how to complete their work, deciding for themselves which tools to call and when.</p>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">This is a meaningfully different model from a conventional RAG pipeline. In a pipeline, retrieval happens on every request because a developer wired it that way. In CrewAI, retrieval happens because an <strong style="font-weight: 600;">agent decided it needed more information</strong> to complete its goal. Agents can call a search tool once, several times, or not at all, depending on what the task actually requires.</p>
+<blockquote style="margin: 28px 0; padding: 4px 0 4px 24px; border-left: 3px solid #0F62FE; font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-style: italic; font-size: 19px; line-height: 1.6; color: #525252;">CrewAI doesn't just retrieve context — it decides when retrieval is even necessary, then reasons over whatever it finds.</blockquote>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 18px; color: #161616; margin: 32px 0 10px;">Core building blocks</h3>
+<ul style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616; margin: 0 0 20px; padding-left: 22px;">
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Agents</strong> — autonomous workers with a role, goal, backstory, and a set of tools they're allowed to use</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Tasks</strong> — units of work assigned to an agent, with a description and an expected output</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Tools</strong> — capabilities an agent can invoke, such as web search, file access, or in this case, semantic search against IBM Db2</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Crews</strong> — a collection of agents and tasks executed sequentially or hierarchically, with agents able to delegate to one another</li>
+</ul>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">Two Halves: Ingestion and Retrieval</h2>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">Every agentic knowledge system splits into two independent halves, and it pays to keep them independent:</p>
+<table style="width: 100%; border-collapse: collapse; margin: 24px 0; font-family: 'IBM Plex Sans', sans-serif; font-size: 15px;" cellpadding="0" cellspacing="0">
+<thead>
+<tr>
+<th style="text-align: left; background: #161616; color: #ffffff; padding: 12px 16px; font-weight: 500;">Ingestion (write path)</th>
+<th style="text-align: left; background: #0F62FE; color: #ffffff; padding: 12px 16px; font-weight: 500;">Retrieval (read path)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616;">Runs on a schedule or on content change — batch, offline, no agent involved</td>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616;">Runs inside an agent's reasoning loop, on demand, one query at a time</td>
+</tr>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616; background: #F9F9F9;">Chunks documents, embeds passages, writes rows with their vectors</td>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616; background: #F9F9F9;">Embeds one question, ranks rows by <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">VECTOR_DISTANCE</code>, returns the top matches</td>
+</tr>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616;">Pick any framework: <strong style="font-weight: 600;">Haystack</strong>, LangChain, Langflow, or your own script</td>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616;"><code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">DB2VectorSearchTool</code> inside the crew</td>
+</tr>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616; background: #F9F9F9;">Owns the table schema and the metadata columns</td>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616; background: #F9F9F9;">Reads whatever schema ingestion created — never writes</td>
+</tr>
+</tbody>
+</table>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">The whole contract between them is three things: <strong style="font-weight: 600;">the same table</strong>, <strong style="font-weight: 600;">the same embedding model</strong> (so the vectors are comparable and the dimensions match), and <strong style="font-weight: 600;">the same distance metric</strong>. Get those three right and the two halves never need to know about each other. We use Haystack below because the IBM Db2 integration makes the write path about fifteen lines — but nothing in the retrieval half depends on that choice.</p>
+<blockquote style="margin: 28px 0; padding: 4px 0 4px 24px; border-left: 3px solid #0F62FE; font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-style: italic; font-size: 19px; line-height: 1.6; color: #525252;">Swap Haystack for LangChain or Langflow tomorrow and not a single line of the crew changes. The agents only ever see a Db2 table.</blockquote>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">Why CrewAI for Enterprise AI Agents?</h2>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">Enterprise workloads rarely fit a single fixed pipeline. A support request might need a knowledge-base lookup, a policy check, and a summarization step — and which of those steps actually run depends on the question being asked. CrewAI's agent model maps naturally onto this kind of variable, decision-driven work:</p>
+<ul style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616; margin: 0 0 20px; padding-left: 22px;">
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Role specialization.</strong> Different agents can own different responsibilities — one searches, one drafts, one verifies — mirroring how real teams divide work.</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Tool-driven reasoning.</strong> Agents decide when to call a tool like <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">DB2VectorSearchTool</code>, rather than the developer hard-coding a retrieval step into every request.</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Composable crews.</strong> Multiple agents can be sequenced or run hierarchically, letting complex workflows emerge from simple, well-scoped roles.</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Runs entirely on your infrastructure.</strong> With Granite models served by Ollama and Db2 holding the vectors, no document text and no customer question ever leaves your network.</li>
+</ul>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">What's been missing for IBM Db2 users is a first-class way to plug enterprise data into that agent loop. That's exactly what the IBM Db2 Vector Search Tool provides.</p>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">What You Can Build with CrewAI + IBM Db2 Vector Search</h2>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">IBM Db2 12.1.2 introduced a native <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">VECTOR</code> data type and the <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">VECTOR_DISTANCE</code> function, which means Db2 can act as a vector store without any additional infrastructure. Paired with CrewAI, that unlocks:</p>
+<ul style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616; margin: 0 0 20px; padding-left: 22px;">
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Autonomous enterprise support agents</strong> that decide on their own when a question requires pulling from the knowledge base stored in Db2</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Multi-agent research crews</strong>, where a search agent retrieves candidate documents and a second agent synthesizes an answer from them</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Compliance-aware assistants</strong> that combine vector similarity with metadata filters (category, region, sensitivity) so agents only ever see the data they're allowed to</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Hybrid agent workflows</strong> where the Db2 tool sits alongside other CrewAI tools — web search, file readers, custom APIs — and the agent chooses which one applies</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Fully air-gapped copilots</strong> for internal teams, backed by whatever enterprise content already lives in Db2, with no separate vector database and no external model calls</li>
+</ul>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">Why Agents Need Semantic Search, Not Just a Database Lookup</h2>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">Imagine an enterprise support agent built with CrewAI. When a user asks a question, the agent first reasons about whether it already knows the answer. If it doesn't, it invokes the <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">DB2VectorSearchTool</code>, which embeds the question, retrieves the most semantically relevant rows from Db2, and hands that context back to the agent. The agent never writes SQL, never knows the table schema, and never has to decide how "close enough" a match is — the tool abstracts all of that away.</p>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">That only works well if retrieval is based on <em>meaning</em> rather than exact matches. A traditional <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">WHERE</code> clause can't tell you that "how do I reset my password" and "I'm locked out of my account" are asking about the same thing. Vector search can.</p>
+<table style="width: 100%; border-collapse: collapse; margin: 24px 0; font-family: 'IBM Plex Sans', sans-serif; font-size: 15px;" cellpadding="0" cellspacing="0">
+<thead>
+<tr>
+<th style="text-align: left; background: #161616; color: #ffffff; padding: 12px 16px; font-weight: 500;">Traditional Database Lookup</th>
+<th style="text-align: left; background: #0F62FE; color: #ffffff; padding: 12px 16px; font-weight: 500;">Semantic Vector Search</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616;">Matches exact keywords or predefined fields</td>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616;">Matches based on meaning, even with different wording</td>
+</tr>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616; background: #F9F9F9;">Requires the caller to know column names and query syntax</td>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616; background: #F9F9F9;">Requires only natural language — the agent asks a question, not a query</td>
+</tr>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616;">Struggles with unstructured text like support tickets or policy documents</td>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616;">Purpose-built for unstructured and semi-structured enterprise content</td>
+</tr>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616; background: #F9F9F9;">Filtering is the only way to narrow results</td>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616; background: #F9F9F9;">Combines similarity ranking with optional metadata filtering</td>
+</tr>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616;">Brittle for autonomous agents — a slightly different phrasing returns nothing</td>
+<td style="border: 1px solid #E0E0E0; padding: 12px 16px; color: #161616;">Robust for agents, since intent matters more than exact phrasing</td>
+</tr>
+</tbody>
+</table>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">Introducing the IBM Db2 Vector Search Tool</h2>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;"><code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">DB2VectorSearchTool</code> is a first-class CrewAI tool that performs semantic similarity search directly against IBM Db2 using the native <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">VECTOR_DISTANCE</code> function — no separate vector database required. It follows the same architecture as CrewAI's other retrieval tools, such as <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">QdrantVectorSearchTool</code> and <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">WeaviateVectorSearchTool</code>, so it drops into existing crews with minimal changes.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 18px; color: #161616; margin: 32px 0 10px;">Features of the tool</h3>
+<ul style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616; margin: 0 0 20px; padding-left: 22px;">
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Native Db2 <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">VECTOR_DISTANCE</code></strong> — similarity search runs inside the database itself, with no external vector index to maintain</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Six configurable distance metrics</strong> — COSINE, EUCLIDEAN, EUCLIDEAN_SQUARED, DOT, HAMMING, and MANHATTAN, whitelisted against Db2's own metric names</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Bring your own embeddings</strong> — pass any callable as <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">custom_embedding_fn</code> and the tool uses it verbatim. That's how we plug in Granite embeddings served locally by Ollama, and how you'd plug in watsonx or anything else</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Retrieval-only by design</strong> — the tool never writes to Db2, so your ingestion framework stays entirely your own choice</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Metadata filtering</strong> via <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">filter_by</code> / <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">filter_value</code>, applied together with vector similarity in a single query</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Distance-based cutoff</strong> via <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">max_distance</code>, so agents don't reason over weakly related results</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Runtime dependency resolution</strong> — <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">ibm_db</code> and <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">ibm_db_dbi</code> are imported lazily on first use, so importing the tool never forces a driver install you don't need</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">SQL injection protection</strong> — table, column, and schema names are validated against a strict identifier pattern before ever reaching a query</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Parameterized queries</strong> — user-supplied values are always bound as query parameters, never interpolated into SQL strings</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Normalized, type-safe JSON responses</strong> — a custom encoder safely serializes <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">Decimal</code>, timestamp, and binary values coming back from Db2</li>
+</ul>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">Installation</h2>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 18px; color: #161616; margin: 32px 0 10px;">1. The retrieval side</h3>
+<pre style="background: #161616; color: #f4f4f4; border-radius: 8px; padding: 18px 22px; margin: 16px 0 24px; overflow-x: auto; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.65;"><code>pip install crewai crewai-tools ibm_db requests</code></pre>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;"><code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">ibm_db</code> is the Db2 driver, resolved at runtime by the tool. <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">requests</code> is only there because our embedding function calls Ollama over HTTP — swap it for whatever client your embedding provider uses.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 18px; color: #161616; margin: 32px 0 10px;">2. The ingestion side</h3>
+<pre style="background: #161616; color: #f4f4f4; border-radius: 8px; padding: 18px 22px; margin: 16px 0 24px; overflow-x: auto; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.65;"><code>pip install haystack-ai ibm-db-haystack ollama-haystack</code></pre>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">This is the part you can replace. If your team already runs LangChain or Langflow, install that instead and skip to the retrieval section.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 18px; color: #161616; margin: 32px 0 10px;">3. Pull the Granite models</h3>
+<pre style="background: #161616; color: #f4f4f4; border-radius: 8px; padding: 18px 22px; margin: 16px 0 24px; overflow-x: auto; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.65;"><code>ollama pull granite-embedding:278m
+ollama pull granite3.3:8b</code></pre>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;"><code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">granite-embedding:278m</code> produces 768-dimensional vectors and does all the embedding work on both sides. <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">granite3.3:8b</code> is the model that reasons — point CrewAI's LLM configuration at it, or at whichever model your crew already uses.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 18px; color: #161616; margin: 32px 0 10px;">Environment variables</h3>
+<pre style="background: #161616; color: #f4f4f4; border-radius: 8px; padding: 18px 22px; margin: 16px 0 24px; overflow-x: auto; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.65;"><code>DB2_HOST=localhost
+DB2_USERNAME=db2inst1
+DB2_PASSWORD=secret
+OLLAMA_URL=http://localhost:11434</code></pre>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">Both halves read the same four variables. Haystack consumes them through <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">Secret.from_env_var</code>, which keeps credentials out of logs and serialized pipeline definitions; the CrewAI tool takes a connection string, which we assemble from the same variables so there is exactly one place to rotate a password.</p>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">Architecture</h2>
+<p></p>
+<div class="media" style="overflow: hidden;"><img src="https://higherlogicdownload.s3.amazonaws.com/IMWUC/UploadedImages/WYcqfqLFT4mgufy1OxJh_Architecture_crew_ai-L.png" class="media-object tinymce-editor-img img-responsive" alt="image" title="CrewAI Architecture" data-title="CrewAI Architecture" width="896" data-modalsrc="https://higherlogicdownload.s3.amazonaws.com/IMWUC/UploadedImages/WYcqfqLFT4mgufy1OxJh_Architecture_crew_ai.png" data-imgbase="https://higherlogicdownload.s3.amazonaws.com/IMWUC/UploadedImages/WYcqfqLFT4mgufy1OxJh_Architecture_crew_ai.png" data-imgthumbnail="https://higherlogicdownload.s3.amazonaws.com/IMWUC/UploadedImages/WYcqfqLFT4mgufy1OxJh_Architecture_crew_ai-T.png" data-imgmedium="https://higherlogicdownload.s3.amazonaws.com/IMWUC/UploadedImages/WYcqfqLFT4mgufy1OxJh_Architecture_crew_ai-M.png" data-imglarge="https://higherlogicdownload.s3.amazonaws.com/IMWUC/UploadedImages/WYcqfqLFT4mgufy1OxJh_Architecture_crew_ai-L.png" height="597" style="float: left;"></div>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">Part 1 · Getting Airline Knowledge into Db2 with Haystack</h2>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">Our example is an <strong style="font-weight: 600;">Airline Delay Management Assistant</strong> — a production-grade system where 10 specialized agents collaborate to handle any flight disruption. Before the crew can run, we need to populate IBM Db2 with the airline's enterprise knowledge: SOPs, compensation policies, rebooking procedures, IATA delay codes, regulatory guidelines, and crew manuals. That's the job of the ingestion pipeline.</p>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">We use <strong style="font-weight: 600;">Haystack</strong> for ingestion here, but the pattern works identically with <strong style="font-weight: 600;">LangChain</strong> or <strong style="font-weight: 600;">LlamaIndex</strong> — the crew never touches the ingestion layer, so you can swap it out without changing a single agent.</p>
+<p style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: #0f62fe; font-weight: 500; margin: 36px 0 2px;">Ingestion Pipeline</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 18px; color: #161616; margin: 0 0 10px;">Loading 20 airline documents into Db2</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">The ingestion pipeline discovers every <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">.md</code> file under <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">src/data/</code>, cleans the text, splits it into 512-token chunks with 50-token overlap, embeds with <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">all-MiniLM-L6-v2</code>, and writes documents and vectors to two separate Db2 tables. Splitting and storage are handled by plain Python — no native Haystack Db2 integration is required.</p>
+<pre style="background: #161616; color: #f4f4f4; border-radius: 8px; padding: 18px 22px; margin: 16px 0; overflow-x: auto; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.65;"><code>from pathlib import Path
+from sentence_transformers import SentenceTransformer
+from src.knowledge.db2_document_store import Db2DocumentStore
+from src.knowledge.db2_vector_store import Db2VectorStore
+
+class IngestionPipeline:
+    """End-to-end ingestion: .md files → Db2DocumentStore + Db2VectorStore."""
+
+    def __init__(self):
+        self._data_dir  = Path("src/data")
+        self._embedder  = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+        self._doc_store = Db2DocumentStore()   # writes to AIRLINE_KB.DOCUMENTS
+        self._vec_store = Db2VectorStore()     # writes to AIRLINE_KB.VECTORS
+
+    def run(self, wipe_first: bool = False) -> dict:
+        self._doc_store.connect()
+        self._vec_store.connect()
+
+        files  = sorted(self._data_dir.rglob("*.md"))   # 20 docs across 5 folders
+        chunks = []
+
+        for path in files:
+            text   = _clean_text(path.read_text())
+            splits = _split_into_chunks(text, chunk_tokens=512, overlap_tokens=50)
+            for i, chunk in enumerate(splits):
+                doc_id = _stable_id(str(path), i)       # deterministic sha256 id
+                chunks.append({"id": doc_id, "content": chunk, "source": str(path)})
+
+        # Batch-embed all chunks in one pass (32 at a time)
+        embeddings = self._embedder.encode(
+            [c["content"] for c in chunks],
+            batch_size=32, normalize_embeddings=True,
+        )
+
+        self._doc_store.write_documents(chunks)
+        self._vec_store.write_vectors([
+            {"doc_id": c["id"], "embedding": e.tolist()}
+            for c, e in zip(chunks, embeddings)
+        ])
+        return {"files": len(files), "chunks": len(chunks)}</code></pre>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">Run it once with <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">python scripts/ingest_knowledge.py</code> and Db2 holds everything the crew will ever need. Nothing here runs at query time — the agents never touch the ingestion layer.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 18px; color: #161616; margin: 32px 0 10px;">The two Db2 tables it creates</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">Documents and vectors are stored separately so either can be re-indexed independently:</p>
+<pre style="background: #161616; color: #f4f4f4; border-radius: 8px; padding: 18px 22px; margin: 16px 0; overflow-x: auto; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.65;"><code>-- Document text and metadata
+CREATE TABLE AIRLINE_KB.DOCUMENTS (
+    id      VARCHAR(64)  NOT NULL PRIMARY KEY,
+    content CLOB(1M),
+    source  VARCHAR(512),
+    meta    CLOB(64K)    -- JSON: source_file, chunk_index, total_chunks
+);
+
+-- Embedding vectors for cosine similarity search
+CREATE TABLE AIRLINE_KB.VECTORS (
+    doc_id    VARCHAR(64)   NOT NULL PRIMARY KEY,
+    embedding VARCHAR(32000) -- 384-dim float32 serialized as JSON array
+);</code></pre>
+<div style="background: #EDF5FF; border-left: 3px solid #0F62FE; border-radius: 0 6px 6px 0; padding: 14px 20px; margin: 20px 0; font-family: 'IBM Plex Sans', sans-serif; font-size: 15px; line-height: 1.6; color: #161616;"><strong style="font-weight: 600;">Using LangChain or LlamaIndex instead?</strong> The crew doesn't care. Swap the ingestion layer freely — the only contract is that <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; background: #FFFFFF; border: 1px solid #D0E2FF; border-radius: 4px; padding: 1px 6px;">AIRLINE_KB.DOCUMENTS</code> and <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; background: #FFFFFF; border: 1px solid #D0E2FF; border-radius: 4px; padding: 1px 6px;">AIRLINE_KB.VECTORS</code> are populated with the same embedding model used at retrieval time.</div>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">Part 2 · Build the 10-Agent Airline Crew, Step by Step</h2>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">Now the runtime side. We build the <strong style="font-weight: 600;">IBM Db2 Search Tool</strong> that all 10 agents share, define a representative agent and task, wire up the full crew with context chaining, and expose it over a <strong style="font-weight: 600;">Server-Sent Events streaming endpoint</strong> so the UI can show each agent completing in real time.</p>
+<p style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: #0f62fe; font-weight: 500; margin: 36px 0 2px;">Step 01</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 18px; color: #161616; margin: 0 0 10px;">The IBM Db2 Search Tool — one tool shared by all 10 agents</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">Every agent calls this tool whenever it needs to look up a policy, SOP, regulation, or procedure. Internally it runs the full Haystack retrieval pipeline: embed → cosine similarity in Db2 → cross-encoder rerank → formatted string. Agents never call Haystack directly.</p>
+<pre style="background: #161616; color: #f4f4f4; border-radius: 8px; padding: 18px 22px; margin: 16px 0; overflow-x: auto; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.65;"><code># src/tools/db2_search_tool.py
+from crewai.tools import BaseTool
+from src.knowledge.retrieval_pipeline import retrieve
+
+class Db2SearchTool(BaseTool):
+    name: str = "IBM Db2 Enterprise Knowledge Search"
+    description: str = (
+        "Search the airline enterprise knowledge base stored in IBM Db2. "
+        "Use this tool whenever you need to look up airline SOPs, compensation policies, "
+        "passenger rights regulations, rebooking procedures, airport operations manuals, "
+        "crew handling procedures, IATA delay codes, or any internal airline policy. "
+        "Input: a natural-language query string. "
+        "Output: the most relevant policy / procedure excerpts."
+    )
+
+    def _run(self, query: str) -> str:
+        """Embed → vector search → rerank → return formatted excerpts."""
+        return retrieve(query)
+
+# Singleton shared across all agents
+db2_search_tool = Db2SearchTool()</code></pre>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">The <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">retrieve()</code> function behind it embeds the query with <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">all-MiniLM-L6-v2</code>, fetches the top-10 nearest vectors from Db2 using cosine similarity, reranks them with <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">cross-encoder/ms-marco-MiniLM-L-6-v2</code>, and returns the top-5 as labelled text blocks the agent can read directly.</p>
+<p style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: #0f62fe; font-weight: 500; margin: 36px 0 2px;">Step 02</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 18px; color: #161616; margin: 0 0 10px;">Define a specialist agent</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">Each of the 10 agents follows the same pattern: a tight <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">role</code>, a single-sentence <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">goal</code>, a grounding <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">backstory</code>, and the shared <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">db2_search_tool</code> plus any domain-specific API tool. The LLM is <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">ollama/granite3.3:8b</code> running locally.</p>
+<pre style="background: #161616; color: #f4f4f4; border-radius: 8px; padding: 18px 22px; margin: 16px 0; overflow-x: auto; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.65;"><code># src/agents/weather_agent.py
+from crewai import Agent
+from src.agents._llm import llm              # llm = "ollama/granite3.3:8b"
+from src.tools.db2_search_tool import db2_search_tool
+from src.tools.weather_tool import weather_tool
+
+weather_agent = Agent(
+    role="Aviation Meteorologist",
+    goal=(
+        "Check real-time weather conditions, METAR reports, TAF forecasts, and severity "
+        "at the departure and arrival airports. Classify the operational impact."
+    ),
+    backstory=(
+        "You are an aviation meteorologist embedded in airline operations control. "
+        "You interpret METAR and TAF reports for commercial aviation, classify conditions "
+        "into Low / Medium / High / Severe severity levels using the airline's weather SOPs "
+        "from the enterprise knowledge base, and assess whether weather is the primary delay cause."
+    ),
+    tools=[weather_tool, db2_search_tool],
+    llm=llm,
+    verbose=False,
+    allow_delegation=False,
+)</code></pre>
+<p style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: #0f62fe; font-weight: 500; margin: 36px 0 2px;">Step 03</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 18px; color: #161616; margin: 0 0 10px;">Define a task with context chaining</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">Tasks are where context flows. Downstream tasks declare their upstream dependencies via <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">context=[...]</code> — CrewAI injects those completed outputs before the agent starts, so no agent ever asks for information that a previous agent already produced.</p>
+<pre style="background: #161616; color: #f4f4f4; border-radius: 8px; padding: 18px 22px; margin: 16px 0; overflow-x: auto; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.65;"><code># src/tasks/weather_task.py
+from crewai import Task
+from src.agents.weather_agent import weather_agent
+
+def make_weather_task(flight_query: str) -&gt; Task:
+    return Task(
+        description=(
+            f"Flight delay report:\n\n{flight_query}\n\n"
+            "Retrieve current METAR and TAF for both departure and arrival airports. "
+            "Then query the IBM Db2 Enterprise Knowledge Search for the airline's "
+            "weather operations SOP to classify severity and operational impact."
+        ),
+        expected_output=(
+            "Structured weather assessment: conditions at both airports, 24-hour forecast, "
+            "severity classification (Low/Medium/High/Severe), and operational impact statement."
+        ),
+        agent=weather_agent,
+        # No context= here — weather is a first-wave task that reads the raw user query
+    )
+
+# Downstream tasks declare their dependencies — the Decision Agent consumes everything:
+# make_decision_task(weather_task, flight_task, passenger_task,
+#                    runway_task, aircraft_task, rebooking_task)</code></pre>
+<div style="background: #EDF5FF; border-left: 3px solid #0F62FE; border-radius: 0 6px 6px 0; padding: 14px 20px; margin: 20px 0; font-family: 'IBM Plex Sans', sans-serif; font-size: 15px; line-height: 1.6; color: #161616;"><strong style="font-weight: 600;">How context flows in this crew:</strong> Weather, Flight, and Passenger tasks run first with only the raw query. Runway and Aircraft tasks receive <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; background: #FFFFFF; border: 1px solid #D0E2FF; border-radius: 4px; padding: 1px 6px;">context=[weather_task, flight_task]</code>. Rebooking receives <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; background: #FFFFFF; border: 1px solid #D0E2FF; border-radius: 4px; padding: 1px 6px;">context=[passenger_task, flight_task]</code>. The Decision Agent receives all six. Compensation receives Decision + Passenger. The Review Agent receives Decision + Compensation. Every downstream agent builds on prior work — nothing is repeated.</div>
+<p style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: #0f62fe; font-weight: 500; margin: 36px 0 2px;">Step 04</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 18px; color: #161616; margin: 0 0 10px;">Assemble the full 10-agent crew</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">All 10 agents and 9 tasks are wired together in a single <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">Crew</code>. CrewAI runs them sequentially, passing context at each step, and returns one final reviewed response.</p>
+<table style="width: 100%; border-collapse: collapse; margin: 24px 0; font-family: 'IBM Plex Sans', sans-serif; font-size: 15px;" cellpadding="0" cellspacing="0">
+<thead>
+<tr>
+<th style="text-align: left; background: #0F62FE; color: #ffffff; padding: 12px 16px; font-weight: 500;">Step</th>
+<th style="text-align: left; background: #0F62FE; color: #ffffff; padding: 12px 16px; font-weight: 500;">Agent</th>
+<th style="text-align: left; background: #0F62FE; color: #ffffff; padding: 12px 16px; font-weight: 500;">Context from</th>
+<th style="text-align: left; background: #0F62FE; color: #ffffff; padding: 12px 16px; font-weight: 500;">Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">01</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Aviation Meteorologist</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">raw query</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">METAR, TAF, severity classification</td></tr>
+<tr style="background: #F9F9F9;"><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">02</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Flight Operations Specialist</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">raw query</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Live flight status, tail number, alternatives</td></tr>
+<tr><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">03</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Passenger Services Manager</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">raw query</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Manifest, VIPs, special assistance needs</td></tr>
+<tr style="background: #F9F9F9;"><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">04</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Airport Ground Ops Specialist</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">weather + flight</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Runway availability, NOTAMs, de-icing</td></tr>
+<tr><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">05</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Aircraft Fleet Coordinator</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">weather + flight</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Airworthiness, MEL items, rotation cascade</td></tr>
+<tr style="background: #F9F9F9;"><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">06</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Airline Rebooking Specialist</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">passenger + flight</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Seat inventory, priority rebooking plan</td></tr>
+<tr><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">07</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Crisis Decision Coordinator</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">all 6 above</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">DELAY / DIVERT / CANCEL / PROCEED</td></tr>
+<tr style="background: #F9F9F9;"><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">08</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Passenger Compensation Analyst</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">decision + passenger</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">EU261/DGCA entitlements, vouchers, hotel</td></tr>
+<tr><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">09</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">QA and Compliance Reviewer</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">decision + compensation</td><td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Final policy check → approved operational brief</td></tr>
+</tbody>
+</table>
+<pre style="background: #161616; color: #f4f4f4; border-radius: 8px; padding: 18px 22px; margin: 16px 0; overflow-x: auto; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.65;"><code># src/crew/airline_crew.py
+from crewai import Crew, Process
+
+crew = Crew(
+    agents=[
+        operations_manager, weather_agent, flight_agent, passenger_agent,
+        runway_agent, aircraft_agent, rebooking_agent,
+        decision_agent, compensation_agent, review_agent,
+    ],
+    tasks=[
+        weather_task, flight_task, passenger_task,
+        runway_task, aircraft_task, rebooking_task,
+        decision_task, compensation_task, review_task,
+    ],
+    process=Process.sequential,
+    verbose=False,   # per-task callbacks handle our own structured logging
+)
+
+result = crew.kickoff()   # returns the Review Agent's validated operational brief</code></pre>
+<p style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: #0f62fe; font-weight: 500; margin: 36px 0 2px;">Step 05</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 18px; color: #161616; margin: 0 0 10px;">Expose it as a Server-Sent Events streaming endpoint</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">The crew runs in a background thread. Each task callback pushes an <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">AgentEvent</code> into a <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">queue.Queue</code>, and an async FastAPI generator drains that queue as SSE frames — so the browser sees each agent complete as it happens, not in one lump at the end.</p>
+<pre style="background: #161616; color: #f4f4f4; border-radius: 8px; padding: 18px 22px; margin: 16px 0; overflow-x: auto; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.65;"><code># src/api/routes.py  (abbreviated)
+import queue, threading
+from sse_starlette.sse import EventSourceResponse
+from src.api.schemas import AgentEvent
+
+@router.get("/analyze/stream")
+async def analyze_stream(query: str, request: Request):
+    event_q: queue.Queue = queue.Queue()
+
+    # Crew runs in a background thread — doesn't block the async event loop
+    thread = threading.Thread(
+        target=_run_crew_with_events, args=(query, event_q), daemon=True
+    )
+    thread.start()
+
+    async def _generator():
+        loop = asyncio.get_event_loop()
+        while True:
+            if await request.is_disconnected():
+                break
+            item = await loop.run_in_executor(None, event_q.get, True, 1.0)
+            if item is None:      # sentinel — crew finished
+                break
+            yield {"event": item.event, "data": item.model_dump_json()}
+
+    return EventSourceResponse(_generator())</code></pre>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">Each SSE frame carries a structured <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">AgentEvent</code>: step number, agent name, task name, elapsed seconds, and the agent's full output. The final frame has <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">event="final"</code> and carries the Review Agent's approved operational brief. A standard blocking <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">POST /analyze</code> endpoint is also available for non-streaming clients.</p>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">Understanding the Tool Response</h2>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">The <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">_run()</code> method always returns a <strong style="font-weight: 600;">plain string</strong> — the CrewAI contract. The string is a labelled list of the top-5 reranked document excerpts, ready for the agent to read and reason over directly:</p>
+<pre style="background: #161616; color: #f4f4f4; border-radius: 8px; padding: 18px 22px; margin: 16px 0; overflow-x: auto; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.65;"><code>[Document 1 — compensation_policy.md]
+For delays exceeding 3 hours on EU routes, cash compensation of €250 applies
+for flights under 1500 km. Meals and refreshments must be offered after 2 hours.
+
+[Document 2 — flight_delay_sop.md]
+When a delay is classified High or Severe, the Operations Control Centre must
+be notified within 15 minutes. The duty manager initiates the delay management
+checklist and assigns a passenger handling coordinator.
+
+[Document 3 — eu261_2004_regulation.md]
+Article 7 of EU Regulation 261/2004 stipulates standardised compensation
+amounts based on flight distance and final delay at destination.</code></pre>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">When the knowledge base has no relevant documents, the tool returns a single diagnostic string so the agent can surface the gap rather than hallucinating an answer:</p>
+<pre style="background: #161616; color: #f4f4f4; border-radius: 8px; padding: 18px 22px; margin: 16px 0; overflow-x: auto; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.65;"><code>[IBM Db2 Knowledge Base]
+No relevant documents found for the given query.
+Ensure the knowledge base has been ingested via: python scripts/ingest_knowledge.py</code></pre>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">The retrieve pipeline behind it runs embed → top-10 cosine similarity in Db2 → cross-encoder rerank → top-5. The reranker (<code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">ms-marco-MiniLM-L-6-v2</code>) re-scores the vector hits against the original query string, so the final five are the semantically best passages, not just the nearest vectors. Both models are lazy-loaded on first query and shared across all agents via a module-level singleton — the Db2 connection is opened per-query and closed in a <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">finally</code> block.</p>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">Security Features</h2>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">Because the tool's inputs ultimately come from an LLM's tool call rather than a trusted developer, it's built with the assumption that anything the agent passes in could be adversarial or malformed:</p>
+<ul style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616; margin: 0 0 20px; padding-left: 22px;">
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">SQL identifier validation.</strong> Table, column, and schema names must match <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)?$</code> before they're allowed anywhere near a query string. That includes the <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">filter_by</code> column an agent chooses at call time.</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Parameterized queries.</strong> Query embeddings and filter values are always bound as parameters — never string-interpolated into SQL.</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Distance metric whitelist.</strong> Only the six Db2-supported metric names are accepted; anything else raises a validation error before a connection is even opened.</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Empty-query rejection.</strong> A blank or whitespace-only query short-circuits with a structured error rather than burning an embedding call and a database round trip.</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Explicit connection lifecycle.</strong> Every call opens a fresh connection and closes it in a <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">finally</code>-style cleanup, including on error paths, so failed searches don't leak connections.</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Nothing leaves the network.</strong> <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">all-MiniLM-L6-v2</code> and the cross-encoder run locally via <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">sentence-transformers</code>, <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">granite3.3:8b</code> runs on Ollama, and Db2 holds the vectors — no document text and no user query is ever sent to an external API.</li>
+</ul>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">Tool Parameters</h2>
+<table style="width: 100%; border-collapse: collapse; margin: 24px 0; font-family: 'IBM Plex Sans', sans-serif; font-size: 15px;" cellpadding="0" cellspacing="0">
+<thead>
+<tr>
+<th style="text-align: left; background: #161616; color: #ffffff; padding: 12px 16px; font-weight: 500;">Parameter</th>
+<th style="text-align: left; background: #161616; color: #ffffff; padding: 12px 16px; font-weight: 500;">Type</th>
+<th style="text-align: left; background: #161616; color: #ffffff; padding: 12px 16px; font-weight: 500;">Default</th>
+<th style="text-align: left; background: #161616; color: #ffffff; padding: 12px 16px; font-weight: 500;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">connection_string</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">str</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">required</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Db2 connection string, e.g. <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">DATABASE=x;HOSTNAME=x;PORT=50000;PROTOCOL=TCPIP;UID=x;PWD=x;</code></td>
+</tr>
+<tr style="background: #F9F9F9;">
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">custom_embedding_fn</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Callable | dotted path | None</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">None</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Your embedding function — this is where Granite plugs in. Accepts a callable or an import path such as <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">"myapp.embeddings.granite_query_embedding"</code>.</td>
+</tr>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">name</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">str</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">"DB2VectorSearchTool"</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Tool name the agent sees. Override it when a crew uses more than one instance.</td>
+</tr>
+<tr style="background: #F9F9F9;">
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">description</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">str</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">generic search description</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">What the agent reads when deciding whether to call this tool.</td>
+</tr>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">table_name</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">str</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">"documents"</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Table or view to search. Supports <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">schema.table</code> notation.</td>
+</tr>
+<tr style="background: #F9F9F9;">
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">vector_column</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">str</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">"embedding"</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Column storing the vector embeddings — the Haystack default is already <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">embedding</code>.</td>
+</tr>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">return_columns</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">list[str]</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">["content"]</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Columns to include in each result. Must contain at least one entry.</td>
+</tr>
+<tr style="background: #F9F9F9;">
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">limit</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">int</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">3</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Maximum number of results (1–100).</td>
+</tr>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">distance_metric</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">str</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">"COSINE"</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Db2 distance metric. Must match what ingestion used.</td>
+</tr>
+<tr style="background: #F9F9F9;">
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">max_distance</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">float | None</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">None</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Drop results whose distance exceeds this value.</td>
+</tr>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">embedding_model</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">str</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">provider default</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Only consulted when <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">custom_embedding_fn</code> is not set. Every example in this article sets one, so it never applies here.</td>
+</tr>
+</tbody>
+</table>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 18px; color: #161616; margin: 32px 0 10px;">Supported distance metrics</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">These map directly to the Db2 <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">VECTOR_DISTANCE</code> function: <strong style="font-weight: 600;">COSINE</strong>, <strong style="font-weight: 600;">EUCLIDEAN</strong>, <strong style="font-weight: 600;">EUCLIDEAN_SQUARED</strong>, <strong style="font-weight: 600;">DOT</strong>, <strong style="font-weight: 600;">HAMMING</strong>, and <strong style="font-weight: 600;">MANHATTAN</strong>. See the <a href="https://www.ibm.com/docs/en/db2/12.1.x?topic=functions-vector-distance" style="color: #0f62fe; text-decoration: none;">IBM Db2 VECTOR_DISTANCE documentation</a> for the full reference. Pick one that both halves of your stack support — the Haystack Db2 document store offers COSINE, EUCLIDEAN, and MANHATTAN, and COSINE is the right default for sentence embeddings like Granite's.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 18px; color: #161616; margin: 32px 0 10px;">Schema parameters (per query)</h3>
+<table style="width: 100%; border-collapse: collapse; margin: 24px 0; font-family: 'IBM Plex Sans', sans-serif; font-size: 15px;" cellpadding="0" cellspacing="0">
+<thead>
+<tr>
+<th style="text-align: left; background: #0F62FE; color: #ffffff; padding: 12px 16px; font-weight: 500;">Parameter</th>
+<th style="text-align: left; background: #0F62FE; color: #ffffff; padding: 12px 16px; font-weight: 500;">Type</th>
+<th style="text-align: left; background: #0F62FE; color: #ffffff; padding: 12px 16px; font-weight: 500;">Required</th>
+<th style="text-align: left; background: #0F62FE; color: #ffffff; padding: 12px 16px; font-weight: 500;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">query</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">str</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Yes</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">The search query. Cannot be empty or whitespace-only.</td>
+</tr>
+<tr style="background: #F9F9F9;">
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">filter_by</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">str | None</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">No</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Column name for metadata filtering. Must be paired with <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">filter_value</code>.</td>
+</tr>
+<tr>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">filter_value</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Any | None</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">No</td>
+<td style="border: 1px solid #E0E0E0; padding: 10px 16px;">Value to filter on. Must be paired with <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">filter_by</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">Best Practices</h2>
+<ul style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616; margin: 0 0 20px; padding-left: 22px;">
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Define the embedding function once and import it everywhere.</strong> One module holding the model name, the query prefix, and the dimension is the cheapest insurance against the two halves drifting apart.</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Re-embed everything when you change models.</strong> Switching embedding models means re-running ingestion over the whole corpus. Vectors from two different models are not comparable, and Db2 has no way to tell you that.</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">One tool instance per corpus, with a distinct name.</strong> Give each instance a <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">name</code> and <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">description</code> that says what lives in that table and when to reach for it — that description is the only thing the agent has to go on.</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Return the id column.</strong> It costs a few tokens and buys you citations, which is what makes a grounded answer auditable.</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Set a <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">max_distance</code> for autonomous agents.</strong> Without a cutoff, an agent can end up "reasoning" over irrelevant rows just because they were the closest of a bad set. Tighter corpora (policy) deserve a tighter cutoff than broad ones (tickets).</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Tune chunk size at ingestion, not retrieval.</strong> If agents keep getting fragments that end mid-procedure, the fix is a larger <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">split_length</code> or more overlap in the indexing pipeline — no change to the crew required.</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Say "search" in the task description.</strong> Agents call tools based on how well their role, goal, and task match — a task that says "review the findings" often produces no tool call at all, while "search the policy corpus and cite the document id" reliably does.</li>
+<li style="margin-bottom: 8px;"><strong style="font-weight: 600;">Use metadata filters for anything security- or compliance-sensitive</strong> — and back them with a least-privilege Db2 credential rather than trusting the filter alone.</li>
+</ul>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">Production Considerations</h2>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;"><strong style="font-weight: 600;">Ingestion is your pipeline, on your schedule.</strong> The tool never writes to Db2, so re-indexing, deletions, and freshness are the ingestion layer's job. Whether that's a Haystack pipeline on a cron, a Langflow flow, or a nightly batch job, the crew keeps working unchanged as long as the table and the embedding model stay put.</p>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;"><strong style="font-weight: 600;">Connection lifecycle per call.</strong> Each invocation opens and closes its own Db2 connection. A four-agent crew like the one above can easily make six to ten searches per run, so plan your Db2 connection limits accordingly, or front the database with a connection pooler.</p>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;"><strong style="font-weight: 600;">One embedding call per search.</strong> Every tool call embeds its query before it touches Db2, so more agents searching means more Ollama requests. That's cheap when the model is local, but it is still latency in the agent's loop — size the Ollama host for the concurrency your crews actually generate, and set a sensible timeout on the embedding call so a stalled request surfaces as a structured error rather than a hung crew.</p>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;"><strong style="font-weight: 600;">Least-privilege database credentials.</strong> Give the crew a Db2 user with read access to exactly the tables and views the agents are allowed to search — nothing more. Ingestion needs write access; retrieval never does, so use two different credentials.</p>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;"><strong style="font-weight: 600;">Monitor <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">success: false</code> responses.</strong> Because errors come back as structured JSON rather than exceptions that bubble up, log and alert on <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">error_type</code> values in production so connection or embedding failures don't silently degrade agent quality.</p>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">Where This Fits in an Enterprise Stack</h2>
+<ul style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616; margin: 0 0 20px; padding-left: 22px;">
+<li style="margin-bottom: 6px;">Customer support crews that search a Db2-backed knowledge base before escalating to a human</li>
+<li style="margin-bottom: 6px;">Banking and financial assistants answering only from an approved product and policy corpus, with every claim traceable to a document id</li>
+<li style="margin-bottom: 6px;">Internal policy and compliance assistants scoped by department or region using metadata filters</li>
+<li style="margin-bottom: 6px;">Research crews that combine Db2 search with web search tools, letting the agent choose the right source per question</li>
+<li style="margin-bottom: 6px;">Regulated environments where the whole stack — database, embeddings, and reasoning model — has to stay inside the perimeter</li>
+</ul>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">Frequently Asked Questions</h2>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 17px; color: #161616; margin: 26px 0 6px;">Q1. What is CrewAI?</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #525252;">CrewAI is an open-source Python framework for building multi-agent AI systems. It organizes work around role-based agents, tasks, and tools, and lets agents reason about which tools to call rather than following a fixed pipeline.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 17px; color: #161616; margin: 26px 0 6px;">Q2. What is the IBM Db2 Vector Search Tool?</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #525252;"><code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">DB2VectorSearchTool</code> is a CrewAI tool that lets agents perform semantic vector similarity search directly against IBM Db2 using the native <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">VECTOR_DISTANCE</code> function, with no separate vector database required.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 17px; color: #161616; margin: 26px 0 6px;">Q3. Does the tool handle ingestion too?</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #525252;">No, and that's deliberate. The tool is retrieval-only. Chunking, embedding, and loading documents into Db2 is a separate job that you run on your own schedule with your own framework.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 17px; color: #161616; margin: 26px 0 6px;">Q4. Do I have to use Haystack for ingestion?</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #525252;">Not at all. We use Haystack here because the IBM Db2 integration makes the write path very short, but LangChain, Langflow, or a plain Python script that embeds text and runs an <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">INSERT</code> all produce something the tool can read. The agents only ever see a Db2 table.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 17px; color: #161616; margin: 26px 0 6px;">Q5. Which embedding model does this project use?</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #525252;">The ingestion pipeline and the retrieval pipeline both use <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">sentence-transformers/all-MiniLM-L6-v2</code> (384-dimensional, normalized cosine). The retrieval step then reranks the top-10 vector hits with <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">cross-encoder/ms-marco-MiniLM-L-6-v2</code> before returning the top 5. Both models run locally via <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">sentence-transformers</code> — no Ollama required for embedding.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 17px; color: #161616; margin: 26px 0 6px;">Q6. Why use a cross-encoder reranker on top of vector search?</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #525252;">Cosine similarity on dense vectors is fast but imprecise — it ranks by embedding proximity, not by how well a passage actually answers the query. The cross-encoder reads the query and each candidate passage together and produces a true relevance score, making the final top-5 significantly more accurate than the raw vector top-10. The cost is acceptable because reranking only runs on 10 passages, not the whole corpus.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 17px; color: #161616; margin: 26px 0 6px;">Q7. Do I need a separate vector database?</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #525252;">No. If you're on IBM Db2 12.1.x or later with native <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">VECTOR</code> support, Db2 itself acts as the vector store for both the write and the read path.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 17px; color: #161616; margin: 26px 0 6px;">Q8. Can multiple agents search Db2 in the same crew?</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #525252;">Yes — that's the recommended pattern for anything non-trivial. A single instance can be shared across agents, or you can build one instance per corpus and hand each specialist the one it needs, as shown in Steps 03 and 04.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 17px; color: #161616; margin: 26px 0 6px;">Q9. How does an agent choose between two Db2 tools?</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #525252;">Purely from the <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">name</code> and <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">description</code> you give each instance. Both are ordinary constructor arguments, so name them after the corpus they search and describe when to use them.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 17px; color: #161616; margin: 26px 0 6px;">Q10. Can I filter on Haystack metadata?</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #525252;">Not directly — Haystack stores metadata as JSON in a single <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">meta</code> column, while <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">filter_by</code> expects a real column. Expose the fields you filter on through a view, as in Step 06, or write them as proper columns from a custom ingestion job.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 17px; color: #161616; margin: 26px 0 6px;">Q11. Is the tool safe against SQL injection?</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #525252;">Yes. Table, column, and schema identifiers are validated against a strict pattern before use, distance metrics are checked against a whitelist, and all values are passed as parameterized query arguments rather than string-interpolated.</p>
+<h3 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 17px; color: #161616; margin: 26px 0 6px;">Q12. Is this suitable for production use?</h3>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #525252;">Yes. The tool includes identifier validation, parameterized queries, a metric whitelist, and type-safe response serialization, following the same architecture as other production CrewAI vector search tools such as the Qdrant and Weaviate integrations.</p>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">Conclusion</h2>
+<p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 1.7; color: #161616;">The Airline Delay Management Assistant demonstrates that multi-agent orchestration is not complicated to reason about if you keep the responsibilities clean. Ingestion is a one-time batch job — 20 airline documents, split at 512 tokens, embedded with <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">all-MiniLM-L6-v2</code>, stored in two Db2 tables. The crew is 10 agents, each owning one slice of the problem, chained by explicit <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">context=[...]</code> dependencies so every downstream agent builds on what came before. The single <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">db2_search_tool</code> shared by all of them means no agent ever hallucinates a policy — it looks it up. <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #F4F4F4; border: 1px solid #E0E0E0; border-radius: 4px; padding: 1px 6px;">granite3.3:8b</code> on Ollama does the reasoning, the whole stack runs on your own infrastructure, and a FastAPI SSE endpoint makes every agent's completion visible in real time. That's the full picture — from a raw delay report to a QA-reviewed operational brief, entirely on-premise.</p>
+<h2 style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; font-size: 28px; line-height: 1.3; color: #161616; margin: 48px 0 12px; padding-top: 20px; border-top: 1px solid #E0E0E0;">References</h2>
+<p><a href="https://docs.crewai.com/" style="color: #0f62fe; text-decoration: none;">CrewAI Documentation</a></p>
+<p><a href="https://github.com/crewAIInc/crewAI-tools" style="color: #0f62fe; text-decoration: none;">crewai-tools GitHub Repository</a></p>
+<p><a href="https://www.ibm.com/docs/en/db2/12.1.x?topic=functions-vector-distance" style="color: #0f62fe; text-decoration: none;">IBM Db2 VECTOR_DISTANCE Documentation</a></p>
+<p><a href="https://haystack.deepset.ai/integrations" style="color: #0f62fe; text-decoration: none;">Haystack Integrations Directory</a></p>
+<p><a href="https://pypi.org/project/ibm-db-haystack/" style="color: #0f62fe; text-decoration: none;">ibm-db-haystack Package (PyPI)</a></p>
+<p><a href="https://ollama.com/library/granite-embedding" style="color: #0f62fe; text-decoration: none;">Granite Embedding on Ollama</a></p>
+<p><a href="https://www.ibm.com/products/db2" style="color: #0f62fe; text-decoration: none;">IBM Db2 Product Page</a></p>
+<p><a href="https://pypi.org/project/ibm-db/" style="color: #0f62fe; text-decoration: none;">ibm_db Package (PyPI)</a></p>
+<p><br><span style="font-size: 12pt;"></span></p>
