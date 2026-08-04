@@ -2,12 +2,12 @@
 Structured logging — professional terminal output.
 
 Format:
-    2026-08-05 14:23:01  INFO     [src.crew.airline_crew]  crew_run_started  query='Flight AI302...'
+    2026-08-05 14:23:01  INFO     [crew.airline_crew]  crew_run_started  query='Flight AI302...'
 
 Rules:
   - Timestamps are human-readable (not ISO with T/Z)
   - Level is left-padded to 8 chars
-  - Logger name is shown in brackets, trimmed to the last two segments
+  - Logger name is shown in brackets, trimmed to last two segments
   - No emojis, no colours by default (set LOG_COLOR=true to enable)
   - Key=value pairs printed inline after the event name
 """
@@ -15,14 +15,31 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
-from typing import Any
 
 import structlog
 
 from src.config.settings import get_settings
 
 _CONFIGURED = False
+
+# ── Root-level filter — suppresses noisy CrewAI/LLM provider lines ───────────
+
+_SUPPRESS_PATTERNS = re.compile(
+    r"Successfully validated tool"
+    r"|OpenAI API usage"
+    r"|\[Finalize\]"
+    r"|todos_count="
+)
+
+
+class _SuppressNoisyFilter(logging.Filter):
+    """Drop log records whose message matches known noisy CrewAI internals."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not bool(_SUPPRESS_PATTERNS.search(msg))
 
 
 def _trim_logger_name(_, __, event_dict: dict) -> dict:
@@ -109,16 +126,26 @@ def configure_logging() -> None:
         level=log_level,
     )
 
-    # Silence noisy third-party loggers
+    # Attach suppression filter to every handler on the root logger
+    _noise_filter = _SuppressNoisyFilter()
+    for handler in logging.root.handlers:
+        handler.addFilter(_noise_filter)
+
+    # Silence noisy third-party named loggers
     for noisy in (
         "httpx", "httpcore", "urllib3", "requests",
         "sentence_transformers", "transformers", "torch",
         "huggingface_hub", "filelock", "h11",
-        "crewai",           # CrewAI has its own rich banner output
         "openai",
         "litellm",
     ):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+
+    # Suppress CrewAI's internal LLM provider INFO logs (root logger used directly)
+    # and the rich agent banner output which uses the crewai logger
+    logging.getLogger("crewai").setLevel(logging.WARNING)
+    logging.getLogger("crewai.llms").setLevel(logging.WARNING)
+    logging.getLogger("crewai.experimental").setLevel(logging.WARNING)
 
     _CONFIGURED = True
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import time
 
-from crewai import Crew, Process
+from crewai import Crew, Process, Task
 
 from src.agents.operations_manager import operations_manager
 from src.agents.weather_agent import weather_agent
@@ -32,7 +32,7 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Task metadata used purely for logging — keeps crew.py self-documenting
+# Task metadata — used for execution plan display and per-task logging
 _TASK_META = [
     (1, "WeatherTask",      "Aviation Meteorologist",             "weather + METAR/TAF assessment"),
     (2, "FlightTask",       "Flight Operations Specialist",       "flight status + alternatives"),
@@ -44,6 +44,23 @@ _TASK_META = [
     (8, "CompensationTask", "Passenger Compensation Analyst",     "entitlement matrix + instructions"),
     (9, "ReviewTask",       "QA and Compliance Reviewer",         "final validation + approved output"),
 ]
+
+# Per-step timers used by the task callbacks
+_step_starts: dict[str, float] = {}
+
+
+def _make_callback(step: int, task_name: str, agent_name: str):
+    """Return a CrewAI task callback that logs completion with timing."""
+    def _callback(output):
+        elapsed = round(time.time() - _step_starts.get(task_name, time.time()), 1)
+        logger.info(
+            "task.completed",
+            step=f"{step:02d}/09",
+            task=task_name,
+            agent=agent_name,
+            elapsed_s=elapsed,
+        )
+    return _callback
 
 
 def _separator(char: str = "-", width: int = 72) -> None:
@@ -75,21 +92,42 @@ def run(flight_query: str) -> str:
 
     logger.info("crew.run_started", query=flight_query[:100])
 
-    # ── Task construction ────────────────────────────────────────────────────
+    # ── Task construction with per-task callbacks ────────────────────────────
     logger.info("crew.building_tasks", count=9)
 
+    # Record start times so callbacks can report per-task elapsed seconds
+    for _, tname, _, _ in _TASK_META:
+        _step_starts[tname] = time.time()
+
     weather_task    = make_weather_task(flight_query)
+    weather_task.callback = _make_callback(1, "WeatherTask", "Aviation Meteorologist")
+
     flight_task     = make_flight_task(flight_query)
+    flight_task.callback = _make_callback(2, "FlightTask", "Flight Operations Specialist")
+
     passenger_task  = make_passenger_task(flight_query)
+    passenger_task.callback = _make_callback(3, "PassengerTask", "Passenger Services Manager")
+
     runway_task     = make_runway_task(weather_task, flight_task)
+    runway_task.callback = _make_callback(4, "RunwayTask", "Airport Ground Operations Specialist")
+
     aircraft_task   = make_aircraft_task(weather_task, flight_task)
+    aircraft_task.callback = _make_callback(5, "AircraftTask", "Aircraft Fleet Coordinator")
+
     rebooking_task  = make_rebooking_task(passenger_task, flight_task)
+    rebooking_task.callback = _make_callback(6, "RebookingTask", "Airline Rebooking Specialist")
+
     decision_task   = make_decision_task(
         weather_task, flight_task, passenger_task,
         runway_task, aircraft_task, rebooking_task,
     )
+    decision_task.callback = _make_callback(7, "DecisionTask", "Crisis Decision Coordinator")
+
     compensation_task = make_compensation_task(decision_task, passenger_task)
+    compensation_task.callback = _make_callback(8, "CompensationTask", "Passenger Compensation Analyst")
+
     review_task       = make_review_task(decision_task, compensation_task)
+    review_task.callback = _make_callback(9, "ReviewTask", "QA and Compliance Reviewer")
 
     all_tasks = [
         weather_task, flight_task, passenger_task,
@@ -133,15 +171,6 @@ def run(flight_query: str) -> str:
     task_start = time.time()
     result = crew.kickoff()
     task_elapsed = round(time.time() - task_start, 1)
-
-    # Log each agent's completion (CrewAI sequential — they run in order)
-    for num, task_name, agent_name, description in _TASK_META:
-        logger.info(
-            "task.completed",
-            step=f"{num:02d}/{len(_TASK_META):02d}",
-            task=task_name,
-            agent=agent_name,
-        )
 
     _separator()
 

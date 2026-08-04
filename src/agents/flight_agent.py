@@ -25,6 +25,6 @@ flight_agent = Agent(
     ),
     tools=[flight_tool, db2_search_tool],
     llm=llm,
-    verbose=True,
+    verbose=False,
     allow_delegation=False,
 )

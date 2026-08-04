@@ -26,6 +26,6 @@ compensation_agent = Agent(
     ),
     tools=[db2_search_tool],
     llm=llm,
-    verbose=True,
+    verbose=False,
     allow_delegation=False,
 )
