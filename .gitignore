@@ -5,5 +5,21 @@ __pycache__/
 *.pyo
 .pytest_cache/
 
+<<<<<<< Updated upstream
 # Environment — never commit secrets
 .env
+=======
+# Environment — never commit real credentials
+.env
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+>>>>>>> Stashed changes

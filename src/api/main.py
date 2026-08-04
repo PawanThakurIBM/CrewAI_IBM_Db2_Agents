@@ -4,6 +4,8 @@ FastAPI application entry point.
 Run with:
     uvicorn src.api.main:app --reload --port 8000
 """
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -13,6 +15,14 @@ from src.utils.logger import configure_logging, get_logger
 configure_logging()
 logger = get_logger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):  # noqa: D401
+    logger.info("app_started", version="1.0.0")
+    yield
+    logger.info("app_shutdown")
+
+
 app = FastAPI(
     title="Airline Delay Management Assistant",
     description=(
@@ -21,6 +31,7 @@ app = FastAPI(
         "response to any airline flight delay scenario."
     ),
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -31,13 +42,3 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
-
-
-@app.on_event("startup")
-async def on_startup() -> None:
-    logger.info("app_started", version="1.0.0")
-
-
-@app.on_event("shutdown")
-async def on_shutdown() -> None:
-    logger.info("app_shutdown")

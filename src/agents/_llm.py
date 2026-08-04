@@ -1,6 +1,8 @@
-"""Shared LLM instance — Ollama Granite (local)."""
-from langchain_community.llms import Ollama
+"""Shared LLM identifier — CrewAI v1.x passes Ollama as a string."""
 from src.config.settings import get_settings
 
 _s = get_settings()
-llm = Ollama(model=_s.ollama_model, base_url=_s.ollama_base_url)
+
+# CrewAI v1.x resolves "ollama/model-name" via its own LiteLLM backend.
+# No LangChain wrapper needed.
+llm = f"ollama/{_s.ollama_model}"
