@@ -45,6 +45,46 @@ class _SuppressNoisyFilter(logging.Filter):
         return not bool(_SUPPRESS_PATTERNS.search(msg))
 
 
+# ── stdout filter — intercepts CrewAI lines that bypass logging ───────────────
+# CrewAI prints "OpenAI: Successfully validated tool", "OpenAI API usage:",
+# and "[Finalize]" directly to stdout (not via logging), so we wrap sys.stdout.
+
+_STDOUT_SUPPRESS = re.compile(
+    r"^OpenAI:\s+Successfully validated"
+    r"|^OpenAI API usage:"
+    r"|^\[Finalize\]"
+    r"|^todos_count="
+)
+
+
+class _FilteredStdout:
+    """Wraps sys.stdout and drops lines matching _STDOUT_SUPPRESS."""
+
+    def __init__(self, wrapped: object) -> None:
+        self._wrapped = wrapped
+        self._buf = ""
+
+    def write(self, text: str) -> int:
+        # Buffer until we have a complete line so we can pattern-match it
+        self._buf += text
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            if not _STDOUT_SUPPRESS.match(line.lstrip()):
+                self._wrapped.write(line + "\n")
+                self._wrapped.flush()
+        return len(text)
+
+    def flush(self) -> None:
+        # Flush any buffered partial line (no newline yet) as-is
+        if self._buf and not _STDOUT_SUPPRESS.match(self._buf.lstrip()):
+            self._wrapped.write(self._buf)
+            self._buf = ""
+        self._wrapped.flush()
+
+    def __getattr__(self, name: str):
+        return getattr(self._wrapped, name)
+
+
 def _trim_logger_name(_, __, event_dict: dict) -> dict:
     """Shorten 'src.knowledge.db2_vector_store' → 'knowledge.db2_vector_store'."""
     name = event_dict.get("logger", "")
@@ -133,6 +173,10 @@ def configure_logging() -> None:
     _noise_filter = _SuppressNoisyFilter()
     for handler in logging.root.handlers:
         handler.addFilter(_noise_filter)
+
+    # Wrap sys.stdout so CrewAI's direct print() noise is filtered too
+    if not isinstance(sys.stdout, _FilteredStdout):
+        sys.stdout = _FilteredStdout(sys.stdout)
 
     # Silence noisy third-party named loggers
     for noisy in (

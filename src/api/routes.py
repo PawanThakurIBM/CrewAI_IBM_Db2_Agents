@@ -63,10 +63,21 @@ async def analyze_delay(request: DelayRequest) -> DelayResponse:
 
 # ── SSE streaming endpoint ────────────────────────────────────────────────────
 
+def _sep(char: str = "-", width: int = 72) -> None:
+    print(char * width, flush=True)
+
+
+def _section(title: str) -> None:
+    _sep("=")
+    print(f"  {title}", flush=True)
+    _sep("=")
+
+
 def _run_crew_with_events(query: str, event_queue: queue.Queue) -> None:
     """
     Run the full crew in a background thread.
-    Patches each task callback to also push SSE events into `event_queue`.
+    - verbose=True on Crew → CrewAI prints its Rich agent boxes to stdout in real time
+    - Each task callback also prints a clean completion line AND pushes an SSE event
     """
     import time as _time
     from src.tasks.weather_task import make_weather_task
@@ -90,7 +101,31 @@ def _run_crew_with_events(query: str, event_queue: queue.Queue) -> None:
     from src.agents.review_agent import review_agent
     from crewai import Crew, Process
 
+    wall_start = _time.time()
     step_starts: dict[int, float] = {}
+
+    # ── Print header + execution plan to terminal ────────────────────────────
+    _section("AIRLINE DELAY MANAGEMENT ASSISTANT")
+    print(f"  Query : {query}", flush=True)
+    _sep()
+    print(flush=True)
+    print("  EXECUTION PLAN", flush=True)
+    _sep()
+    _ctx_map = {
+        4: "context: weather, flight",
+        5: "context: weather, flight",
+        6: "context: passenger, flight",
+        7: "context: weather, flight, passenger, runway, aircraft, rebooking",
+        8: "context: decision, passenger",
+        9: "context: decision, compensation",
+    }
+    for num, task_name, agent_name, description in _TASK_META:
+        ctx = f"  [{_ctx_map[num]}]" if num in _ctx_map else ""
+        print(f"  Task {num:02d}  {task_name:<20}  {agent_name:<38}  {description}{ctx}", flush=True)
+    _sep()
+    print(flush=True)
+    print("  AGENT EXECUTION LOG", flush=True)
+    _sep()
 
     def _make_cb(step: int, task_name: str, agent_name: str, description: str):
         step_starts[step] = _time.time()
@@ -98,6 +133,17 @@ def _run_crew_with_events(query: str, event_queue: queue.Queue) -> None:
         def _cb(output):
             elapsed = round(_time.time() - step_starts.get(step, _time.time()), 1)
             output_text = str(output.raw) if hasattr(output, "raw") else str(output)
+
+            # ── Clean completion line in terminal (appears after Rich box) ──
+            logger.info(
+                "task.completed",
+                step=f"{step:02d}/09",
+                task=task_name,
+                agent=agent_name,
+                elapsed_s=elapsed,
+            )
+
+            # ── SSE event for the web UI ─────────────────────────────────
             event_queue.put(AgentEvent(
                 event="agent_done",
                 step=step,
@@ -111,20 +157,19 @@ def _run_crew_with_events(query: str, event_queue: queue.Queue) -> None:
         return _cb
 
     try:
-        # Fire agent_start events immediately so the UI lights up
         for step, task_name, agent_name, description in _TASK_META:
             step_starts[step] = _time.time()
 
         # Build tasks
-        t_weather    = make_weather_task(query)
-        t_flight     = make_flight_task(query)
-        t_passenger  = make_passenger_task(query)
-        t_runway     = make_runway_task(t_weather, t_flight)
-        t_aircraft   = make_aircraft_task(t_weather, t_flight)
-        t_rebooking  = make_rebooking_task(t_passenger, t_flight)
-        t_decision   = make_decision_task(t_weather, t_flight, t_passenger, t_runway, t_aircraft, t_rebooking)
+        t_weather      = make_weather_task(query)
+        t_flight       = make_flight_task(query)
+        t_passenger    = make_passenger_task(query)
+        t_runway       = make_runway_task(t_weather, t_flight)
+        t_aircraft     = make_aircraft_task(t_weather, t_flight)
+        t_rebooking    = make_rebooking_task(t_passenger, t_flight)
+        t_decision     = make_decision_task(t_weather, t_flight, t_passenger, t_runway, t_aircraft, t_rebooking)
         t_compensation = make_compensation_task(t_decision, t_passenger)
-        t_review     = make_review_task(t_decision, t_compensation)
+        t_review       = make_review_task(t_decision, t_compensation)
 
         for task_obj, (step, task_name, agent_name, description) in zip(
             [t_weather, t_flight, t_passenger, t_runway, t_aircraft,
@@ -140,11 +185,29 @@ def _run_crew_with_events(query: str, event_queue: queue.Queue) -> None:
             tasks=[t_weather, t_flight, t_passenger, t_runway, t_aircraft,
                    t_rebooking, t_decision, t_compensation, t_review],
             process=Process.sequential,
-            verbose=False,
+            verbose=True,   # ← enables Rich agent boxes in terminal
         )
 
         result = crew.kickoff()
         final_text = str(result.raw) if hasattr(result, "raw") else str(result)
+
+        # ── Final terminal block ─────────────────────────────────────────────
+        _sep()
+        wall_elapsed = round(_time.time() - wall_start, 1)
+        logger.info(
+            "crew.run_completed",
+            total_elapsed_seconds=wall_elapsed,
+            tasks_executed=9,
+            agents_used=10,
+        )
+        print(flush=True)
+        _section("FINAL RESPONSE")
+        print(final_text, flush=True)
+        print(flush=True)
+        _sep("=")
+        print(f"  Run complete.  Total time: {wall_elapsed}s", flush=True)
+        _sep("=")
+
         event_queue.put(AgentEvent(event="final", output=final_text))
 
     except Exception as exc:
