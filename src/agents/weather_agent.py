@@ -24,6 +24,7 @@ weather_agent = Agent(
     ),
     tools=[weather_tool, db2_search_tool],
     llm=llm,
+    max_iter=5,
     verbose=False,
     allow_delegation=False,
 )

@@ -35,10 +35,29 @@ IATA_TO_ICAO: dict[str, str] = {
     "IST": "LTFM",  # Istanbul
 }
 
+# ── IATA→city-name mapping for OpenWeatherMap (OWM requires city names) ───────
+IATA_TO_CITY: dict[str, str] = {
+    "DEL": "New Delhi",
+    "LHR": "London",
+    "LGW": "London",
+    "BOM": "Mumbai",
+    "DXB": "Dubai",
+    "DOH": "Doha",
+    "FRA": "Frankfurt",
+    "CDG": "Paris",
+    "AMS": "Amsterdam",
+    "IST": "Istanbul",
+}
+
 
 def _icao(iata: str) -> str:
     """Convert IATA to ICAO, fallback to uppercase IATA."""
     return IATA_TO_ICAO.get(iata.upper(), iata.upper())
+
+
+def _city(iata: str) -> str:
+    """Convert IATA code to an OWM-queryable city name, fallback to the IATA code."""
+    return IATA_TO_CITY.get(iata.upper(), iata.upper())
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=4))
@@ -119,12 +138,12 @@ def get_weather_report(departure_iata: str, arrival_iata: str) -> str:
 
     for label, iata in [("DEPARTURE", departure_iata), ("ARRIVAL", arrival_iata)]:
         icao = _icao(iata)
-        city_name = iata  # fallback display name
+        city_name = _city(iata)  # pre-resolved OWM city name
         lines: list[str] = [f"## {label} AIRPORT: {iata} (ICAO: {icao})"]
 
         # ── OpenWeatherMap current ───────────────────────────────────────────
         try:
-            owm = _owm_current(iata)
+            owm = _owm_current(city_name)
             city_name = owm.get("name", iata)
             weather_desc = owm["weather"][0]["description"].title()
             temp = owm["main"]["temp"]
@@ -148,7 +167,7 @@ def get_weather_report(departure_iata: str, arrival_iata: str) -> str:
 
         # ── OWM Forecast (next 24h summary) ──────────────────────────────────
         try:
-            fc = _owm_forecast(iata)
+            fc = _owm_forecast(city_name)
             conditions_24h = list({
                 entry["weather"][0]["description"].title()
                 for entry in fc.get("list", [])

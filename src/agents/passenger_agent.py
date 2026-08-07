@@ -23,6 +23,7 @@ passenger_agent = Agent(
     ),
     tools=[passenger_service_tool, db2_search_tool],
     llm=llm,
+    max_iter=5,
     verbose=False,
     allow_delegation=False,
 )

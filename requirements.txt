@@ -12,12 +12,19 @@ haystack-ai==2.9.0
 sentence-transformers==3.3.1
 
 # IBM Db2
-ibm-db==3.2.3
+# NOTE: 3.2.3 does not support Apple Silicon (arm64).
+# Use 3.2.9+ which ships a native arm64 wheel (macOS 14+).
+ibm-db==3.2.9
 ibm-db-sa==0.4.0
+
+# setuptools<81 required — crewai 0.80.0 uses pkg_resources which was
+# removed from the default namespace in setuptools 81+.
+setuptools<81
 
 # API / Web
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
+sse-starlette>=1.6.1       # required by src/api/routes.py for SSE streaming
 httpx==0.28.1
 requests==2.32.3
 

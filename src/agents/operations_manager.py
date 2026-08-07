@@ -22,6 +22,7 @@ operations_manager = Agent(
     ),
     tools=[db2_search_tool],
     llm=llm,
+    max_iter=5,
     verbose=False,
     allow_delegation=True,
 )

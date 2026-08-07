@@ -57,6 +57,20 @@ class RetrievalPipeline:
             log.info("retrieval.loading_reranker", model=self._reranker_model_name)
             self._reranker = CrossEncoder(self._reranker_model_name)
 
+    def _reconnect(self) -> None:
+        """Re-open Db2 connections after a communication link failure."""
+        log.warning("retrieval.reconnecting")
+        try:
+            self._doc_store.close()
+            self._vec_store.close()
+        except Exception:
+            pass
+        self._connected = False
+        self._doc_store.connect()
+        self._vec_store.connect()
+        self._connected = True
+        log.info("retrieval.reconnected")
+
     # ── Core query ───────────────────────────────────────────────────────────
 
     def retrieve(self, query: str) -> list[dict]:
@@ -77,10 +91,20 @@ class RetrievalPipeline:
             query, normalize_embeddings=True
         ).tolist()
 
-        # 2. Vector similarity search
-        vector_hits = self._vec_store.similarity_search(
-            query_embedding, top_k=self._retrieval_top_k
-        )
+        # 2. Vector similarity search — reconnect once on Db2 link failure
+        try:
+            vector_hits = self._vec_store.similarity_search(
+                query_embedding, top_k=self._retrieval_top_k
+            )
+        except Exception as exc:
+            if "CLI0108E" in str(exc) or "40003" in str(exc) or "communication" in str(exc).lower():
+                log.warning("retrieval.db2_link_failure", error=str(exc)[:120])
+                self._reconnect()
+                vector_hits = self._vec_store.similarity_search(
+                    query_embedding, top_k=self._retrieval_top_k
+                )
+            else:
+                raise
         log.debug("retrieval.vector_hits", count=len(vector_hits))
 
         if not vector_hits:
