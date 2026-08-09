@@ -5,7 +5,7 @@ Given a natural-language query string, returns the top-k most relevant
 document excerpts from IBM Db2 as a formatted string ready for agent consumption.
 
 Steps:
-    1. Embed query with sentence-transformers/all-MiniLM-L6-v2
+    1. Embed query with ibm-granite/granite-embedding-125m-english
     2. Cosine similarity search in Db2VectorStore (top_k=10)
     3. Fetch full document text from Db2DocumentStore
     4. Rerank with cross-encoder/ms-marco-MiniLM-L-6-v2 (top_k=5)
