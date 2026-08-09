@@ -4,7 +4,8 @@ This file provides guidance to agents when working with code in this repository.
 
 ## Non-Obvious Documentation Context
 
-- **`haystack-ai==2.9.0` is in `requirements.txt` but zero Haystack classes are imported anywhere in `src/`** — the entire RAG pipeline is custom. Do not describe this as "built on Haystack". Correct description: "Haystack-inspired custom RAG pipeline".
+- **`haystack-ai==2.9.0` is used for ingestion** — `src/knowledge/ingestion_pipeline.py` runs a real Haystack `Pipeline`. Retrieval is custom Python. Correct description: "Haystack ingestion, custom retrieval pipeline".
+- **Embedding model is `ibm-granite/granite-embedding-125m-english`** (768-dim, Apache 2.0, HuggingFace). Was previously `all-MiniLM-L6-v2` (384-dim). Current Db2 vectors are 768-dim.
 - **Two entry points**: `run_crew.py` (CLI) and `uvicorn src.api.main:app` (FastAPI with blocking POST + SSE GET at `/api/v1/analyze`).
 - **`plan/` is historical** — for current truth read `src/`. Plan docs describe intent, not implementation.
 - **Logging silences CrewAI noise**: `src/utils/logger.py` patches `sys.stdout` and silences `crewai`, `litellm`, `httpx`, `sentence_transformers` loggers. Set `LOG_COLOR=true` for coloured output.

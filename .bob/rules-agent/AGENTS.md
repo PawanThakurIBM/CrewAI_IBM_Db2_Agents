@@ -4,7 +4,8 @@ This file provides guidance to agents when working with code in this repository.
 
 ## Critical Coding Rules
 
-- **`haystack-ai` is installed but never used** — do not import from it. All pipeline code is custom in `src/knowledge/`.
+- **`haystack-ai` is used for ingestion only** — `src/knowledge/ingestion_pipeline.py` imports `haystack.Pipeline`, `MarkdownToDocument`, `SentenceTransformersDocumentEmbedder`, `DocumentWriter` etc. Retrieval (`src/knowledge/retrieval_pipeline.py`) is custom — zero Haystack imports. Do not add Haystack imports to retrieval.
+- **Embedding model is `ibm-granite/granite-embedding-125m-english`** (768-dim). Changing it requires `--wipe` re-ingestion. Verify first with `scripts/test_granite_embedding.py`.
 - **All tools must subclass `crewai.tools.BaseTool`** with `_run(self, query: str) -> str`. Non-string return breaks CrewAI.
 - **Config only via `get_settings()`** (`src/config/settings.py`). Never `os.environ`/`os.getenv` anywhere in `src/`.
 - **`allow_delegation=True` on `operations_manager` only** — all 9 others must be `False`.

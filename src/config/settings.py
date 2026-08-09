@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     db2_schema: str = "AIRLINE_KB"
 
     # ── Haystack / Knowledge pipeline (Pawan) ─────────────────────────────
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_model: str = "ibm-granite/granite-embedding-125m-english"
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     retrieval_top_k: int = 10
     reranker_top_k: int = 5

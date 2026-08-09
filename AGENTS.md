@@ -4,7 +4,7 @@ This file provides guidance to agents when working with code in this repository.
 
 ## Project
 
-Airline Delay Management Assistant — Python 3.11+, CrewAI 0.80.0, custom RAG pipeline, IBM Db2, Ollama (`granite3.3:8b`), FastAPI.
+Airline Delay Management Assistant — Python 3.11+, CrewAI 0.80.0, Haystack 2.9 ingestion + custom retrieval, IBM Db2, Ollama (`granite3.3:8b`), FastAPI.
 
 ## Commands
 
@@ -27,7 +27,8 @@ pytest tests/test_knowledge/test_retrieval_pipeline.py::TestRetrieveFunction::te
 
 ## Critical Non-Obvious Facts
 
-- **`haystack-ai` is installed but never imported** — the entire ingestion and retrieval pipeline is custom Python. Zero Haystack classes are used at runtime. `grep -r "from haystack" src/` returns nothing.
+- **`haystack-ai` is used for ingestion only** — `src/knowledge/ingestion_pipeline.py` uses real Haystack `Pipeline` (`MarkdownToDocument → DocumentCleaner → DocumentSplitter → SentenceTransformersDocumentEmbedder → DocumentWriter`). Retrieval is custom Python in `src/knowledge/retrieval_pipeline.py` (no Haystack at query time). `src/knowledge/haystack_document_store.py` bridges the two sides.
+- **Embedding model is `ibm-granite/granite-embedding-125m-english`** (768-dim, Apache 2.0). Previous model was `all-MiniLM-L6-v2` (384-dim). Vectors in `AIRLINE_KB.VECTORS` are 768-dim.
 - **`agent.llm` is a `crewai.llm.LLM` object**, not a string — read the model via `agent.llm.model`, not `str(agent.llm)`.
 - **`WeatherTool` takes IATA codes but OWM needs city names** — `_city()` in `src/tools/weather_tool.py` maps via `IATA_TO_CITY` dict before calling OWM. Adding new airports requires updating both `IATA_TO_ICAO` and `IATA_TO_CITY`.
 - **Vector similarity is Python-side brute-force** — `Db2VectorStore.similarity_search()` fetches up to `_SCAN_LIMIT=10_000` rows then ranks in Python. Db2 has no native vector function.
@@ -39,7 +40,7 @@ pytest tests/test_knowledge/test_retrieval_pipeline.py::TestRetrieveFunction::te
 - **Tool name is a fixed contract string**: `"IBM Db2 Enterprise Knowledge Search"` — agents route calls by this exact name.
 - **Mock services are permanent** (`src/mock_services/`) — not stubs to replace. Booking data is keyed by route string e.g. `"DEL-LHR"`.
 - **Task `context=[]` must be explicit** — missing context means the agent re-queries. See `src/tasks/decision_task.py` for the canonical multi-context example.
-- **Changing `EMBEDDING_MODEL`** without `--wipe` re-ingestion produces garbage retrieval (mismatched vectors).
+- **Changing `EMBEDDING_MODEL`** without `--wipe` re-ingestion produces garbage retrieval (mismatched vector dimensions). Verify new model with `scripts/test_granite_embedding.py` before re-ingesting.
 - **`configure_logging()` must be called once at startup** — `run_crew.py`, `src/api/main.py`, and `scripts/ingest_knowledge.py` each call it. Do not call it in library code.
 - **`from __future__ import annotations`** required at the top of every new file.
 - **Config only via `get_settings()`** from `src/config/settings.py` — never `os.environ` directly.
