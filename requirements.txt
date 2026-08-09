@@ -10,6 +10,8 @@ ollama==0.4.4
 # Knowledge / Haystack
 haystack-ai==2.9.0
 sentence-transformers==3.3.1
+markdown-it-py>=3.0.0     # required by haystack MarkdownToDocument converter
+mdit_plain>=0.2.0          # required by haystack MarkdownToDocument converter
 
 # IBM Db2
 # NOTE: 3.2.3 does not support Apple Silicon (arm64).

@@ -13,11 +13,11 @@ Steps:
 """
 from __future__ import annotations
 
-from sentence_transformers import SentenceTransformer, CrossEncoder
+from sentence_transformers import CrossEncoder, SentenceTransformer
 
 from src.config.settings import get_settings
-from src.knowledge.db2_document_store import Db2DocumentStore
 from src.knowledge.db2_vector_store import Db2VectorStore
+from src.knowledge.haystack_document_store import Db2HaystackDocumentStore
 from src.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -37,7 +37,7 @@ class RetrievalPipeline:
         self._retrieval_top_k = settings.retrieval_top_k
         self._reranker_top_k = settings.reranker_top_k
 
-        self._doc_store = Db2DocumentStore()
+        self._doc_store = Db2HaystackDocumentStore()
         self._vec_store = Db2VectorStore()
         self._embedder: SentenceTransformer | None = None
         self._reranker: CrossEncoder | None = None
@@ -111,21 +111,22 @@ class RetrievalPipeline:
             log.warning("retrieval.no_vector_hits", query=query[:120])
             return []
 
-        # 3. Fetch documents
+        # 3. Fetch documents — Db2HaystackDocumentStore returns Haystack Document objects
         doc_ids = [h["doc_id"] for h in vector_hits]
         docs = self._doc_store.get_documents_by_ids(doc_ids)
         # Index by id for fast lookup
-        doc_map = {d["id"]: d for d in docs}
+        doc_map = {d.id: d for d in docs}
 
         # Preserve hit order and attach content
         candidates = []
         for hit in vector_hits:
             doc = doc_map.get(hit["doc_id"])
             if doc:
+                source = doc.meta.get("file_path", doc.meta.get("source", ""))
                 candidates.append({
-                    "id": doc["id"],
-                    "content": doc["content"],
-                    "source": doc["source"],
+                    "id": doc.id,
+                    "content": doc.content,
+                    "source": source,
                     "vector_score": hit["score"],
                 })
 

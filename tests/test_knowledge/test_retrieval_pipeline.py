@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from haystack import Document
 
 from src.knowledge.retrieval_pipeline import RetrievalPipeline, retrieve
 
@@ -60,9 +61,10 @@ class TestRetrievalPipelineRetrieve:
             {"doc_id": "id1", "score": 0.9},
             {"doc_id": "id2", "score": 0.7},
         ]
+        # get_documents_by_ids now returns Haystack Document objects
         doc_store.get_documents_by_ids.return_value = [
-            {"id": "id1", "content": "SOP content", "source": "sops/delay.md", "meta": {}},
-            {"id": "id2", "content": "Policy content", "source": "policies/comp.md", "meta": {}},
+            Document(id="id1", content="SOP content",   meta={"file_path": "sops/delay.md"}),
+            Document(id="id2", content="Policy content", meta={"file_path": "policies/comp.md"}),
         ]
         # Reranker gives higher score to id2
         reranker.predict.return_value = [0.5, 0.9]
@@ -79,9 +81,9 @@ class TestRetrievalPipelineRetrieve:
             {"doc_id": "id1", "score": 0.9},
             {"doc_id": "id_missing", "score": 0.8},
         ]
-        # Only id1 found in doc store
+        # Only id1 found in doc store — returns Haystack Document
         doc_store.get_documents_by_ids.return_value = [
-            {"id": "id1", "content": "Found", "source": "a.md", "meta": {}},
+            Document(id="id1", content="Found", meta={"file_path": "a.md"}),
         ]
         reranker.predict.return_value = [0.8]
 
