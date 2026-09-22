@@ -37,8 +37,8 @@ def _tool_names(agent: Agent) -> list[str]:
 class TestLLMBinding:
     """All agents must use the shared Ollama LLM string.
 
-    CrewAI wraps the 'ollama/<model>' string in a crewai.llm.LLM object;
-    the model name is accessible via agent.llm.model.
+    CrewAI 1.x wraps the 'ollama/<model>' string in an OpenAICompatibleCompletion
+    object with separate provider='ollama' and model='<name>' attributes.
     """
 
     @pytest.mark.parametrize("agent", [
@@ -46,11 +46,15 @@ class TestLLMBinding:
         runway_agent, aircraft_agent, rebooking_agent,
         decision_agent, compensation_agent, review_agent,
     ])
-    def test_llm_starts_with_ollama(self, agent: Agent):
-        # CrewAI wraps the string in crewai.llm.LLM; access via .model attribute
-        model_str = getattr(agent.llm, "model", str(agent.llm))
-        assert model_str.startswith("ollama/"), (
-            f"{agent.role}: expected llm.model to start with 'ollama/', got {model_str!r}"
+    def test_llm_uses_ollama_provider(self, agent: Agent):
+        # crewai 1.x: provider and model are separate attributes on the LLM object
+        provider = getattr(agent.llm, "provider", None)
+        model = getattr(agent.llm, "model", str(agent.llm))
+        assert provider == "ollama", (
+            f"{agent.role}: expected llm.provider='ollama', got {provider!r}"
+        )
+        assert model == "granite3.3:8b", (
+            f"{agent.role}: expected llm.model='granite3.3:8b', got {model!r}"
         )
 
 

@@ -1,10 +1,8 @@
 """
 Unit tests for DB2VectorSearchTool (exported as Db2SearchTool alias).
-Mocks the retrieval pipeline — no live Db2 or model loading.
+The tool is now imported directly from crewai_tools — no custom BaseTool subclass.
 """
 from __future__ import annotations
-
-from unittest.mock import patch
 
 import pytest
 
@@ -12,37 +10,13 @@ from src.tools.db2_search_tool import DB2VectorSearchTool, Db2SearchTool, db2_se
 
 
 class TestDb2SearchToolContract:
-    """Verify the contract Dhruv's agents depend on."""
+    """Verify the contract all agents depend on."""
 
     def test_tool_name_is_exact_string(self):
         assert db2_search_tool.name == "IBM Db2 Enterprise Knowledge Search"
 
     def test_tool_description_is_non_empty(self):
         assert len(db2_search_tool.description) > 50
-
-    def test_run_returns_string(self):
-        with patch("src.tools.db2_search_tool.retrieve") as mock_retrieve:
-            mock_retrieve.return_value = "[Document 1 — sops/delay.md]\nSome content"
-            result = db2_search_tool._run("passenger compensation policy")
-            assert isinstance(result, str)
-
-    def test_run_passes_query_to_retrieve(self):
-        with patch("src.tools.db2_search_tool.retrieve") as mock_retrieve:
-            mock_retrieve.return_value = "some result"
-            db2_search_tool._run("crew rest requirements")
-            mock_retrieve.assert_called_once_with("crew rest requirements")
-
-    def test_run_returns_retrieve_output_unchanged(self):
-        expected = "[Document 1 — policies/comp.md]\n€250 for short routes"
-        with patch("src.tools.db2_search_tool.retrieve", return_value=expected):
-            result = db2_search_tool._run("EU261 compensation amounts")
-            assert result == expected
-
-    def test_run_propagates_empty_string_result(self):
-        """Even an empty retrieve() result must pass through as string."""
-        with patch("src.tools.db2_search_tool.retrieve", return_value=""):
-            result = db2_search_tool._run("anything")
-            assert isinstance(result, str)
 
     def test_singleton_instance_is_db2vectorsearchtool_class(self):
         """db2_search_tool singleton must be a DB2VectorSearchTool instance."""
@@ -55,3 +29,20 @@ class TestDb2SearchToolContract:
     def test_singleton_instance_is_also_alias_class(self):
         """Alias check: singleton must pass isinstance for both names."""
         assert isinstance(db2_search_tool, Db2SearchTool)
+
+    def test_tool_uses_cosine_distance(self):
+        assert db2_search_tool.distance_metric == "COSINE"
+
+    def test_tool_uses_embedding_column(self):
+        assert db2_search_tool.vector_column == "embedding"
+
+    def test_tool_uses_granite_embedding_fn(self):
+        assert db2_search_tool.custom_embedding_fn is not None
+
+    def test_tool_returns_content_column(self):
+        assert "content" in db2_search_tool.return_columns
+
+    def test_tool_connection_string_is_non_empty(self):
+        # DSN is built from settings — just verify it's a non-empty string
+        assert isinstance(db2_search_tool.connection_string, str)
+        assert len(db2_search_tool.connection_string) > 0

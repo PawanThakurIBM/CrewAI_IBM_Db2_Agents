@@ -1,75 +1,67 @@
 """
 IBM Db2 Vector Search Tool — CrewAI Tool.
 
-DB2VectorSearchTool is the contributed CrewAI tool that gives agents semantic
-vector search against IBM Db2 using the native VECTOR_DISTANCE function.
+Uses DB2VectorSearchTool from the official crewai_tools package — the tool
+contributed by IBM to the crewai-tools ecosystem.
 
-All 10 agents reference it via the Db2SearchTool alias for backward compatibility.
+The tool is instantiated with:
+  - connection_string  — built from get_settings().db2_dsn
+  - table_name         — "<schema>.VECTORS"
+  - vector_column      — "embedding"
+  - return_columns     — ["content"]
+  - limit              — settings.retrieval_top_k (10)
+  - distance_metric    — "COSINE"
+  - custom_embedding_fn — ibm-granite/granite-embedding-125m-english (768-dim)
 
-Contract:
-- name: "IBM Db2 Enterprise Knowledge Search"   ← exact string, do not change
-- _run() always returns a str
-- Output format:
-    [Document 1 — filename.md]
-    <content>
+Db2SearchTool is a backward-compatible alias for DB2VectorSearchTool.
 
-    [Document 2 — filename.md]
-    <content>
+Why this alias exists:
+  DB2VectorSearchTool is the canonical class name — it matches the name of the
+  tool we contributed to the crewai-tools ecosystem. However, throughout this
+  project the agents, tasks, and tests were originally written importing
+  "Db2SearchTool". Rather than rename every import site, we expose both names
+  from this module so that:
+    • "from src.tools.db2_search_tool import DB2VectorSearchTool" — uses the
+      contributed tool name directly (preferred for new code).
+    • "from src.tools.db2_search_tool import Db2SearchTool" — still works
+      for all existing call sites without any change.
+
+  Because this is a plain assignment (not a subclass), both names refer to the
+  exact same class object:  Db2SearchTool is DB2VectorSearchTool → True
 """
 from __future__ import annotations
 
-from crewai.tools import BaseTool
+from sentence_transformers import SentenceTransformer
+from crewai_tools import DB2VectorSearchTool
 
-from src.knowledge.retrieval_pipeline import retrieve
+from src.config.settings import get_settings
 from src.utils.logger import get_logger
 
 log = get_logger(__name__)
 
+_settings = get_settings()
 
-class DB2VectorSearchTool(BaseTool):
-    """
-    CrewAI tool for semantic vector search against IBM Db2.
-
-    Embeds the query with ibm-granite/granite-embedding-125m-english (768-dim),
-    runs VECTOR_DISTANCE(embedding, VECTOR(?, 768), 'COSINE') inside Db2 to rank
-    the top-10 closest chunks, reranks them with a cross-encoder, and returns the
-    top-5 excerpts as a plain string — no separate vector database required.
-    """
-
-    name: str = "IBM Db2 Enterprise Knowledge Search"
-    description: str = (
-        "Search the airline enterprise knowledge base stored in IBM Db2. "
-        "Use this tool whenever you need to look up airline SOPs, compensation policies, "
-        "passenger rights regulations, rebooking procedures, airport operations manuals, "
-        "crew handling procedures, IATA delay codes, or any internal airline policy. "
-        "Input: a natural-language query string. "
-        "Output: the most relevant policy / procedure excerpts."
-    )
-
-    def _run(self, query: str) -> str:
-        """Embed query, run VECTOR_DISTANCE in Db2, rerank, return formatted excerpts."""
-        log.info("db2_search_tool.query", query=query[:120])
-        result = retrieve(query)
-        log.info("db2_search_tool.result_length", chars=len(result))
-        return result
+# Lazy-load the Granite embedding model (loaded once at first tool instantiation)
+_embedder = SentenceTransformer(_settings.embedding_model)
 
 
-# Db2SearchTool is a backward-compatible alias for DB2VectorSearchTool.
-#
-# Why this alias exists:
-#   DB2VectorSearchTool is the canonical class name — it matches the name of the
-#   tool we contributed to the crewai-tools ecosystem. However, throughout this
-#   project the agents, tasks, and tests were originally written importing
-#   "Db2SearchTool". Rather than rename every import site, we expose both names
-#   from this module so that:
-#     • "from src.tools.db2_search_tool import DB2VectorSearchTool" — uses the
-#       contributed tool name directly (preferred for new code).
-#     • "from src.tools.db2_search_tool import Db2SearchTool" — still works
-#       for all existing call sites without any change.
-#
-#   Because this is a plain assignment (not a subclass), both names refer to the
-#   exact same class object:  Db2SearchTool is DB2VectorSearchTool → True
+def _granite_embed(text: str) -> list[float]:
+    """Embed text using ibm-granite/granite-embedding-125m-english (768-dim)."""
+    return _embedder.encode(text, normalize_embeddings=True).tolist()
+
+
+# Backward-compatible alias — Db2SearchTool IS DB2VectorSearchTool
 Db2SearchTool = DB2VectorSearchTool
 
-# Singleton instance shared across all agents
-db2_search_tool = DB2VectorSearchTool()
+# Singleton instance shared across all agents.
+# name is overridden to match the fixed contract string all agents depend on.
+db2_search_tool = DB2VectorSearchTool(
+    name="IBM Db2 Enterprise Knowledge Search",
+    connection_string=_settings.db2_dsn,
+    table_name=f"{_settings.db2_schema}.VECTORS",
+    vector_column="embedding",
+    return_columns=["content"],
+    limit=_settings.retrieval_top_k,
+    distance_metric="COSINE",
+    custom_embedding_fn=_granite_embed,
+)

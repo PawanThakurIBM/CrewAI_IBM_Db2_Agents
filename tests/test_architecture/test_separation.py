@@ -127,16 +127,14 @@ class TestRetrievalDoesNotUseHaystackPipeline:
 class TestSeparationAtRuntime:
     """Runtime verification that ingestion and retrieval are truly independent."""
 
-    def test_db2_search_tool_calls_retrieve_not_haystack(self):
-        """DB2VectorSearchTool._run() must call retrieve() — not a Haystack Pipeline."""
+    def test_db2_search_tool_is_from_crewai_tools(self):
+        """DB2VectorSearchTool must be imported from crewai_tools, not a local BaseTool subclass."""
         from src.tools.db2_search_tool import DB2VectorSearchTool
-
-        tool = DB2VectorSearchTool()
-        with patch("src.tools.db2_search_tool.retrieve", return_value="policy result") as mock_retrieve:
-            result = tool._run("compensation policy")
-
-        mock_retrieve.assert_called_once_with("compensation policy")
-        assert result == "policy result"
+        from crewai_tools import DB2VectorSearchTool as UpstreamTool
+        assert DB2VectorSearchTool is UpstreamTool, (
+            "DB2VectorSearchTool in db2_search_tool.py must be the crewai_tools class, "
+            "not a local reimplementation"
+        )
 
     def test_ingestion_pipeline_class_has_build_pipeline_method(self):
         """IngestionPipeline must expose _build_pipeline() that returns a Haystack Pipeline."""
