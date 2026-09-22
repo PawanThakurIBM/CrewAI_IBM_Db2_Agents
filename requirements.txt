@@ -8,8 +8,10 @@ langchain-community==0.3.14
 ollama==0.4.4
 
 # Knowledge / Haystack
-haystack-ai==2.9.0
-sentence-transformers==3.3.1
+haystack-ai==3.1.1
+ibm-db-haystack==0.3.0
+sentence-transformers-haystack==0.1.1
+sentence-transformers==6.1.0
 markdown-it-py>=3.0.0     # required by haystack MarkdownToDocument converter
 mdit_plain>=0.2.0          # required by haystack MarkdownToDocument converter
 

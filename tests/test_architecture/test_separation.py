@@ -2,7 +2,7 @@
 Architecture separation tests.
 
 Verifies that:
-1. Ingestion uses Haystack Pipeline components — never imports them from src/knowledge directly
+1. Ingestion uses Haystack Pipeline components and the official IBMDb2DocumentStore
 2. Retrieval (CrewAI DB2VectorSearchTool / Db2SearchTool alias) does NOT use Haystack Pipeline — goes direct to Db2
 3. The two pipelines are completely independent
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from haystack import Pipeline
@@ -68,23 +68,23 @@ class TestIngestionUsesHaystack:
             "ingestion_pipeline.py must import MarkdownToDocument from haystack"
         )
 
-    def test_haystack_document_store_has_write_documents_method(self):
-        """Db2HaystackDocumentStore must implement the Haystack DocumentStore protocol."""
-        from src.knowledge.haystack_document_store import Db2HaystackDocumentStore
-        # Check all required DocumentStore protocol methods are present
+    def test_ingestion_uses_official_ibm_document_store(self):
+        """IngestionPipeline must use IBMDb2DocumentStore from the official ibm-db-haystack package."""
+        from haystack_integrations.document_stores.ibm_db import IBMDb2DocumentStore
+        from src.knowledge.ingestion_pipeline import IngestionPipeline
+        with patch("src.knowledge.ingestion_pipeline.IBMDb2DocumentStore") as mock_cls, \
+             patch("src.knowledge.ingestion_pipeline.Db2VectorStore"):
+            IngestionPipeline()
+        mock_cls.assert_called_once()
+
+    def test_official_document_store_has_required_methods(self):
+        """IBMDb2DocumentStore must implement the Haystack DocumentStore protocol."""
+        from haystack_integrations.document_stores.ibm_db import IBMDb2DocumentStore
         for method in ("write_documents", "filter_documents", "count_documents",
                        "delete_documents", "to_dict"):
-            assert hasattr(Db2HaystackDocumentStore, method), (
-                f"Db2HaystackDocumentStore missing required method: {method}"
+            assert hasattr(IBMDb2DocumentStore, method), (
+                f"IBMDb2DocumentStore missing required method: {method}"
             )
-
-    def test_haystack_document_store_inherits_from_haystack(self):
-        """Db2HaystackDocumentStore must inherit from haystack's DocumentStore."""
-        from src.knowledge.haystack_document_store import Db2HaystackDocumentStore
-        bases = [b.__name__ for b in Db2HaystackDocumentStore.__mro__]
-        assert "DocumentStore" in bases, (
-            f"Db2HaystackDocumentStore must inherit DocumentStore; MRO: {bases}"
-        )
 
 
 class TestRetrievalDoesNotUseHaystackPipeline:
@@ -111,16 +111,11 @@ class TestRetrievalDoesNotUseHaystackPipeline:
             f"db2_search_tool.py must not import haystack: {haystack_imports}"
         )
 
-    def test_retrieval_imports_haystack_document_store_not_old_store(self):
+    def test_retrieval_uses_official_ibm_document_store(self):
+        """retrieval_pipeline.py must import IBMDb2DocumentStore from ibm-db-haystack."""
         imports = _get_imports(ROOT / "src/knowledge/retrieval_pipeline.py")
-        # Must use haystack_document_store, not old db2_document_store
-        assert any("haystack_document_store" in i for i in imports), (
-            "retrieval_pipeline.py must import Db2HaystackDocumentStore"
-        )
-        old_store = [i for i in imports
-                     if i.endswith("db2_document_store") and "haystack" not in i]
-        assert not old_store, (
-            f"retrieval_pipeline.py must not import old Db2DocumentStore: {old_store}"
+        assert any("ibm_db" in i for i in imports), (
+            "retrieval_pipeline.py must import IBMDb2DocumentStore from haystack_integrations"
         )
 
 
@@ -164,19 +159,18 @@ class TestSeparationAtRuntime:
             "retrieval_pipeline module must not import Haystack Pipeline"
         )
 
-    def test_ingestion_uses_haystack_document_store_subclass(self):
-        """IngestionPipeline._doc_store must be a Db2HaystackDocumentStore."""
+    def test_ingestion_uses_official_ibm_document_store(self):
+        """IngestionPipeline._doc_store must be an IBMDb2DocumentStore."""
         from src.knowledge.ingestion_pipeline import IngestionPipeline
-        from src.knowledge.haystack_document_store import Db2HaystackDocumentStore
-        with patch("src.knowledge.ingestion_pipeline.Db2HaystackDocumentStore") as mock_cls, \
+        with patch("src.knowledge.ingestion_pipeline.IBMDb2DocumentStore") as mock_cls, \
              patch("src.knowledge.ingestion_pipeline.Db2VectorStore"):
             IngestionPipeline()
         mock_cls.assert_called_once()
 
-    def test_retrieval_pipeline_uses_haystack_document_store(self):
-        """RetrievalPipeline._doc_store must be a Db2HaystackDocumentStore."""
+    def test_retrieval_pipeline_uses_official_ibm_document_store(self):
+        """RetrievalPipeline._doc_store must be an IBMDb2DocumentStore."""
         from src.knowledge.retrieval_pipeline import RetrievalPipeline
-        with patch("src.knowledge.retrieval_pipeline.Db2HaystackDocumentStore") as mock_cls, \
+        with patch("src.knowledge.retrieval_pipeline.IBMDb2DocumentStore") as mock_cls, \
              patch("src.knowledge.retrieval_pipeline.Db2VectorStore"):
             RetrievalPipeline()
         mock_cls.assert_called_once()

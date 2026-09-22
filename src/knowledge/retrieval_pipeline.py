@@ -1,23 +1,27 @@
 """
-Haystack Retrieval Pipeline.
+Retrieval Pipeline (no Haystack Pipeline — direct Db2 query).
 
 Given a natural-language query string, returns the top-k most relevant
 document excerpts from IBM Db2 as a formatted string ready for agent consumption.
 
 Steps:
-    1. Embed query with ibm-granite/granite-embedding-125m-english
-    2. Cosine similarity search in Db2VectorStore (top_k=10)
-    3. Fetch full document text from Db2DocumentStore
+    1. Embed query with ibm-granite/granite-embedding-125m-english (768-dim)
+    2. VECTOR_DISTANCE search via Db2VectorStore — in-database cosine similarity (top_k=10)
+    3. Fetch full document text from IBMDb2DocumentStore (official ibm-db-haystack package)
     4. Rerank with cross-encoder/ms-marco-MiniLM-L-6-v2 (top_k=5)
     5. Format and return as plain string
+
+IBMDb2DocumentStore is the official Haystack integration — ibm-db-haystack package.
+No Haystack Pipeline is used here — retrieval goes direct to Db2.
 """
 from __future__ import annotations
 
 from sentence_transformers import CrossEncoder, SentenceTransformer
+from haystack.utils import Secret
+from haystack_integrations.document_stores.ibm_db import IBMDb2DocumentStore
 
 from src.config.settings import get_settings
 from src.knowledge.db2_vector_store import Db2VectorStore
-from src.knowledge.haystack_document_store import Db2HaystackDocumentStore
 from src.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -37,7 +41,17 @@ class RetrievalPipeline:
         self._retrieval_top_k = settings.retrieval_top_k
         self._reranker_top_k = settings.reranker_top_k
 
-        self._doc_store = Db2HaystackDocumentStore()
+        self._doc_store = IBMDb2DocumentStore(
+            database=settings.db2_database,
+            hostname=settings.db2_host,
+            port=settings.db2_port,
+            username=Secret.from_env_var("DB2_USERNAME"),
+            password=Secret.from_env_var("DB2_PASSWORD"),
+            schema=settings.db2_schema,
+            table_name="DOCUMENTS",
+            embedding_dim=settings.embedding_dim,
+            distance_metric="COSINE",
+        )
         self._vec_store = Db2VectorStore()
         self._embedder: SentenceTransformer | None = None
         self._reranker: CrossEncoder | None = None
@@ -46,8 +60,8 @@ class RetrievalPipeline:
     # ── Lazy setup ───────────────────────────────────────────────────────────
 
     def _ensure_ready(self) -> None:
+        # IBMDb2DocumentStore manages its own connection — only vec_store needs manual connect
         if not self._connected:
-            self._doc_store.connect()
             self._vec_store.connect()
             self._connected = True
         if self._embedder is None:
@@ -58,15 +72,13 @@ class RetrievalPipeline:
             self._reranker = CrossEncoder(self._reranker_model_name)
 
     def _reconnect(self) -> None:
-        """Re-open Db2 connections after a communication link failure."""
+        """Re-open vec_store connection after a communication link failure."""
         log.warning("retrieval.reconnecting")
         try:
-            self._doc_store.close()
             self._vec_store.close()
         except Exception:
             pass
         self._connected = False
-        self._doc_store.connect()
         self._vec_store.connect()
         self._connected = True
         log.info("retrieval.reconnected")
@@ -111,9 +123,11 @@ class RetrievalPipeline:
             log.warning("retrieval.no_vector_hits", query=query[:120])
             return []
 
-        # 3. Fetch documents — Db2HaystackDocumentStore returns Haystack Document objects
+        # 3. Fetch documents — IBMDb2DocumentStore.filter_documents with id filter
         doc_ids = [h["doc_id"] for h in vector_hits]
-        docs = self._doc_store.get_documents_by_ids(doc_ids)
+        docs = self._doc_store.filter_documents(
+            filters={"field": "id", "operator": "in", "value": doc_ids}
+        )
         # Index by id for fast lookup
         doc_map = {d.id: d for d in docs}
 
@@ -151,8 +165,8 @@ class RetrievalPipeline:
         return top
 
     def close(self) -> None:
+        # IBMDb2DocumentStore manages its own connection; only close vec_store
         if self._connected:
-            self._doc_store.close()
             self._vec_store.close()
             self._connected = False
 

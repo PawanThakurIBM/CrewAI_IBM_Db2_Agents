@@ -1,6 +1,6 @@
 """
-Unit tests for the Haystack Retrieval Pipeline and the retrieve() function.
-Mocks Db2 stores and SentenceTransformer.
+Unit tests for the Retrieval Pipeline and the retrieve() function.
+Mocks IBMDb2DocumentStore, Db2VectorStore, and SentenceTransformer — no live Db2.
 """
 from __future__ import annotations
 
@@ -34,7 +34,10 @@ def _make_pipeline_with_mocks():
 
     embedder.encode.return_value = np.array([0.1, 0.2, 0.3])
 
-    pipeline = RetrievalPipeline()
+    with patch("src.knowledge.retrieval_pipeline.IBMDb2DocumentStore", return_value=doc_store), \
+         patch("src.knowledge.retrieval_pipeline.Db2VectorStore", return_value=vec_store):
+        pipeline = RetrievalPipeline()
+
     pipeline._doc_store = doc_store
     pipeline._vec_store = vec_store
     pipeline._embedder = embedder
@@ -61,8 +64,8 @@ class TestRetrievalPipelineRetrieve:
             {"doc_id": "id1", "score": 0.9},
             {"doc_id": "id2", "score": 0.7},
         ]
-        # get_documents_by_ids now returns Haystack Document objects
-        doc_store.get_documents_by_ids.return_value = [
+        # IBMDb2DocumentStore.filter_documents returns Haystack Document objects
+        doc_store.filter_documents.return_value = [
             Document(id="id1", content="SOP content",   meta={"file_path": "sops/delay.md"}),
             Document(id="id2", content="Policy content", meta={"file_path": "policies/comp.md"}),
         ]
@@ -81,8 +84,8 @@ class TestRetrievalPipelineRetrieve:
             {"doc_id": "id1", "score": 0.9},
             {"doc_id": "id_missing", "score": 0.8},
         ]
-        # Only id1 found in doc store — returns Haystack Document
-        doc_store.get_documents_by_ids.return_value = [
+        # Only id1 found in IBMDb2DocumentStore
+        doc_store.filter_documents.return_value = [
             Document(id="id1", content="Found", meta={"file_path": "a.md"}),
         ]
         reranker.predict.return_value = [0.8]
