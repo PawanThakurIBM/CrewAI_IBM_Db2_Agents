@@ -1,5 +1,5 @@
 """
-Unit tests for Db2SearchTool.
+Unit tests for DB2VectorSearchTool (exported as Db2SearchTool alias).
 Mocks the retrieval pipeline — no live Db2 or model loading.
 """
 from __future__ import annotations
@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.tools.db2_search_tool import Db2SearchTool, db2_search_tool
+from src.tools.db2_search_tool import DB2VectorSearchTool, Db2SearchTool, db2_search_tool
 
 
 class TestDb2SearchToolContract:
@@ -44,5 +44,14 @@ class TestDb2SearchToolContract:
             result = db2_search_tool._run("anything")
             assert isinstance(result, str)
 
-    def test_singleton_instance_is_db2_search_tool_class(self):
+    def test_singleton_instance_is_db2vectorsearchtool_class(self):
+        """db2_search_tool singleton must be a DB2VectorSearchTool instance."""
+        assert isinstance(db2_search_tool, DB2VectorSearchTool)
+
+    def test_db2searchtool_alias_is_same_class(self):
+        """Db2SearchTool must be the exact same class as DB2VectorSearchTool."""
+        assert Db2SearchTool is DB2VectorSearchTool
+
+    def test_singleton_instance_is_also_alias_class(self):
+        """Alias check: singleton must pass isinstance for both names."""
         assert isinstance(db2_search_tool, Db2SearchTool)

@@ -3,7 +3,7 @@ Architecture separation tests.
 
 Verifies that:
 1. Ingestion uses Haystack Pipeline components — never imports them from src/knowledge directly
-2. Retrieval (CrewAI Db2SearchTool) does NOT use Haystack Pipeline — goes direct to Db2
+2. Retrieval (CrewAI DB2VectorSearchTool / Db2SearchTool alias) does NOT use Haystack Pipeline — goes direct to Db2
 3. The two pipelines are completely independent
 """
 from __future__ import annotations
@@ -128,10 +128,10 @@ class TestSeparationAtRuntime:
     """Runtime verification that ingestion and retrieval are truly independent."""
 
     def test_db2_search_tool_calls_retrieve_not_haystack(self):
-        """Db2SearchTool._run() must call retrieve() — not a Haystack Pipeline."""
-        from src.tools.db2_search_tool import Db2SearchTool
+        """DB2VectorSearchTool._run() must call retrieve() — not a Haystack Pipeline."""
+        from src.tools.db2_search_tool import DB2VectorSearchTool
 
-        tool = Db2SearchTool()
+        tool = DB2VectorSearchTool()
         with patch("src.tools.db2_search_tool.retrieve", return_value="policy result") as mock_retrieve:
             result = tool._run("compensation policy")
 
