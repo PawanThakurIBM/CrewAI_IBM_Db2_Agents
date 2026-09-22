@@ -6,22 +6,21 @@ document excerpts from IBM Db2 as a formatted string ready for agent consumption
 
 Steps:
     1. Embed query with ibm-granite/granite-embedding-125m-english (768-dim)
-    2. VECTOR_DISTANCE search via Db2VectorStore — in-database cosine similarity (top_k=10)
-    3. Fetch full document text from IBMDb2DocumentStore (official ibm-db-haystack package)
-    4. Rerank with cross-encoder/ms-marco-MiniLM-L-6-v2 (top_k=5)
-    5. Format and return as plain string
+    2. IBMDb2EmbeddingRetriever — runs VECTOR_DISTANCE in Db2, returns top-k Documents
+    3. Rerank with cross-encoder/ms-marco-MiniLM-L-6-v2 (top_k=5)
+    4. Format and return as plain string
 
-IBMDb2DocumentStore is the official Haystack integration — ibm-db-haystack package.
-No Haystack Pipeline is used here — retrieval goes direct to Db2.
+Both IBMDb2DocumentStore and IBMDb2EmbeddingRetriever are from the official
+ibm-db-haystack package — no custom Db2 wrapper required.
 """
 from __future__ import annotations
 
 from sentence_transformers import CrossEncoder, SentenceTransformer
 from haystack.utils import Secret
 from haystack_integrations.document_stores.ibm_db import IBMDb2DocumentStore
+from haystack_integrations.components.retrievers.ibm_db import IBMDb2EmbeddingRetriever
 
 from src.config.settings import get_settings
-from src.knowledge.db2_vector_store import Db2VectorStore
 from src.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -52,36 +51,22 @@ class RetrievalPipeline:
             embedding_dim=settings.embedding_dim,
             distance_metric="COSINE",
         )
-        self._vec_store = Db2VectorStore()
+        self._retriever = IBMDb2EmbeddingRetriever(
+            document_store=self._doc_store,
+            top_k=self._retrieval_top_k,
+        )
         self._embedder: SentenceTransformer | None = None
         self._reranker: CrossEncoder | None = None
-        self._connected = False
 
     # ── Lazy setup ───────────────────────────────────────────────────────────
 
     def _ensure_ready(self) -> None:
-        # IBMDb2DocumentStore manages its own connection — only vec_store needs manual connect
-        if not self._connected:
-            self._vec_store.connect()
-            self._connected = True
         if self._embedder is None:
             log.info("retrieval.loading_embedder", model=self._embedding_model_name)
             self._embedder = SentenceTransformer(self._embedding_model_name)
         if self._reranker is None:
             log.info("retrieval.loading_reranker", model=self._reranker_model_name)
             self._reranker = CrossEncoder(self._reranker_model_name)
-
-    def _reconnect(self) -> None:
-        """Re-open vec_store connection after a communication link failure."""
-        log.warning("retrieval.reconnecting")
-        try:
-            self._vec_store.close()
-        except Exception:
-            pass
-        self._connected = False
-        self._vec_store.connect()
-        self._connected = True
-        log.info("retrieval.reconnected")
 
     # ── Core query ───────────────────────────────────────────────────────────
 
@@ -103,72 +88,34 @@ class RetrievalPipeline:
             query, normalize_embeddings=True
         ).tolist()
 
-        # 2. Vector similarity search — reconnect once on Db2 link failure
-        try:
-            vector_hits = self._vec_store.similarity_search(
-                query_embedding, top_k=self._retrieval_top_k
-            )
-        except Exception as exc:
-            if "CLI0108E" in str(exc) or "40003" in str(exc) or "communication" in str(exc).lower():
-                log.warning("retrieval.db2_link_failure", error=str(exc)[:120])
-                self._reconnect()
-                vector_hits = self._vec_store.similarity_search(
-                    query_embedding, top_k=self._retrieval_top_k
-                )
-            else:
-                raise
-        log.debug("retrieval.vector_hits", count=len(vector_hits))
+        # 2. Vector similarity search via IBMDb2EmbeddingRetriever
+        result = self._retriever.run(query_embedding=query_embedding)
+        hits = result.get("documents", [])
+        log.debug("retrieval.vector_hits", count=len(hits))
 
-        if not vector_hits:
+        if not hits:
             log.warning("retrieval.no_vector_hits", query=query[:120])
             return []
 
-        # 3. Fetch documents — IBMDb2DocumentStore.filter_documents with id filter
-        doc_ids = [h["doc_id"] for h in vector_hits]
-        docs = self._doc_store.filter_documents(
-            filters={"field": "id", "operator": "in", "value": doc_ids}
-        )
-        # Index by id for fast lookup
-        doc_map = {d.id: d for d in docs}
-
-        # Preserve hit order and attach content
-        candidates = []
-        for hit in vector_hits:
-            doc = doc_map.get(hit["doc_id"])
-            if doc:
-                source = doc.meta.get("file_path", doc.meta.get("source", ""))
-                candidates.append({
-                    "id": doc.id,
-                    "content": doc.content,
-                    "source": source,
-                    "vector_score": hit["score"],
-                })
-
-        if not candidates:
-            return []
-
-        # 4. Rerank with cross-encoder
-        pairs = [(query, c["content"]) for c in candidates]
+        # 3. Rerank with cross-encoder
+        pairs = [(query, doc.content or "") for doc in hits]
         rerank_scores = self._reranker.predict(pairs)
 
-        for candidate, score in zip(candidates, rerank_scores):
-            candidate["rerank_score"] = float(score)
+        candidates = []
+        for doc, score in zip(hits, rerank_scores):
+            source = doc.meta.get("file_path", doc.meta.get("source", ""))
+            candidates.append({
+                "id": doc.id,
+                "content": doc.content,
+                "source": source,
+                "rerank_score": float(score),
+            })
 
         candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
         top = candidates[: self._reranker_top_k]
 
-        log.info(
-            "retrieval.query_done",
-            query=query[:80],
-            returned=len(top),
-        )
+        log.info("retrieval.query_done", query=query[:80], returned=len(top))
         return top
-
-    def close(self) -> None:
-        # IBMDb2DocumentStore manages its own connection; only close vec_store
-        if self._connected:
-            self._vec_store.close()
-            self._connected = False
 
 
 # ── Module-level helpers ──────────────────────────────────────────────────────
@@ -186,7 +133,7 @@ def _get_pipeline() -> RetrievalPipeline:
 
 def retrieve(query: str) -> str:
     """
-    Convenience function used by Db2SearchTool._run().
+    Convenience function used by DB2VectorSearchTool._run().
 
     Returns a formatted string of the top-k document excerpts ready
     for direct consumption by CrewAI agents.

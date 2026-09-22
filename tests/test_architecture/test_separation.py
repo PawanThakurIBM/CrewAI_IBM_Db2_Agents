@@ -70,10 +70,8 @@ class TestIngestionUsesHaystack:
 
     def test_ingestion_uses_official_ibm_document_store(self):
         """IngestionPipeline must use IBMDb2DocumentStore from the official ibm-db-haystack package."""
-        from haystack_integrations.document_stores.ibm_db import IBMDb2DocumentStore
         from src.knowledge.ingestion_pipeline import IngestionPipeline
-        with patch("src.knowledge.ingestion_pipeline.IBMDb2DocumentStore") as mock_cls, \
-             patch("src.knowledge.ingestion_pipeline.Db2VectorStore"):
+        with patch("src.knowledge.ingestion_pipeline.IBMDb2DocumentStore") as mock_cls:
             IngestionPipeline()
         mock_cls.assert_called_once()
 
@@ -111,11 +109,13 @@ class TestRetrievalDoesNotUseHaystackPipeline:
             f"db2_search_tool.py must not import haystack: {haystack_imports}"
         )
 
-    def test_retrieval_uses_official_ibm_document_store(self):
-        """retrieval_pipeline.py must import IBMDb2DocumentStore from ibm-db-haystack."""
+    def test_retrieval_uses_official_ibm_integrations(self):
+        """retrieval_pipeline.py must import IBMDb2DocumentStore and IBMDb2EmbeddingRetriever."""
         imports = _get_imports(ROOT / "src/knowledge/retrieval_pipeline.py")
-        assert any("ibm_db" in i for i in imports), (
-            "retrieval_pipeline.py must import IBMDb2DocumentStore from haystack_integrations"
+        ibm_imports = [i for i in imports if "ibm_db" in i]
+        assert len(ibm_imports) >= 2, (
+            f"retrieval_pipeline.py must import both IBMDb2DocumentStore and "
+            f"IBMDb2EmbeddingRetriever from haystack_integrations: {imports}"
         )
 
 
@@ -162,15 +162,15 @@ class TestSeparationAtRuntime:
     def test_ingestion_uses_official_ibm_document_store(self):
         """IngestionPipeline._doc_store must be an IBMDb2DocumentStore."""
         from src.knowledge.ingestion_pipeline import IngestionPipeline
-        with patch("src.knowledge.ingestion_pipeline.IBMDb2DocumentStore") as mock_cls, \
-             patch("src.knowledge.ingestion_pipeline.Db2VectorStore"):
+        with patch("src.knowledge.ingestion_pipeline.IBMDb2DocumentStore") as mock_cls:
             IngestionPipeline()
         mock_cls.assert_called_once()
 
-    def test_retrieval_pipeline_uses_official_ibm_document_store(self):
-        """RetrievalPipeline._doc_store must be an IBMDb2DocumentStore."""
+    def test_retrieval_pipeline_uses_official_ibm_integrations(self):
+        """RetrievalPipeline must use IBMDb2DocumentStore and IBMDb2EmbeddingRetriever."""
         from src.knowledge.retrieval_pipeline import RetrievalPipeline
-        with patch("src.knowledge.retrieval_pipeline.IBMDb2DocumentStore") as mock_cls, \
-             patch("src.knowledge.retrieval_pipeline.Db2VectorStore"):
+        with patch("src.knowledge.retrieval_pipeline.IBMDb2DocumentStore") as mock_store, \
+             patch("src.knowledge.retrieval_pipeline.IBMDb2EmbeddingRetriever") as mock_retriever:
             RetrievalPipeline()
-        mock_cls.assert_called_once()
+        mock_store.assert_called_once()
+        mock_retriever.assert_called_once()

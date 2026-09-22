@@ -1,6 +1,6 @@
 """
 Unit tests for the Retrieval Pipeline and the retrieve() function.
-Mocks IBMDb2DocumentStore, Db2VectorStore, and SentenceTransformer — no live Db2.
+Mocks IBMDb2DocumentStore, IBMDb2EmbeddingRetriever, and SentenceTransformer — no live Db2.
 """
 from __future__ import annotations
 
@@ -27,48 +27,41 @@ def reset_pipeline_singleton():
 
 def _make_pipeline_with_mocks():
     """Build a RetrievalPipeline with all external deps mocked."""
-    doc_store = MagicMock()
-    vec_store = MagicMock()
+    retriever = MagicMock()
     embedder = MagicMock()
     reranker = MagicMock()
 
     embedder.encode.return_value = np.array([0.1, 0.2, 0.3])
 
-    with patch("src.knowledge.retrieval_pipeline.IBMDb2DocumentStore", return_value=doc_store), \
-         patch("src.knowledge.retrieval_pipeline.Db2VectorStore", return_value=vec_store):
+    with patch("src.knowledge.retrieval_pipeline.IBMDb2DocumentStore"), \
+         patch("src.knowledge.retrieval_pipeline.IBMDb2EmbeddingRetriever", return_value=retriever):
         pipeline = RetrievalPipeline()
 
-    pipeline._doc_store = doc_store
-    pipeline._vec_store = vec_store
+    pipeline._retriever = retriever
     pipeline._embedder = embedder
     pipeline._reranker = reranker
-    pipeline._connected = True  # skip connect()
 
-    return pipeline, doc_store, vec_store, embedder, reranker
+    return pipeline, retriever, embedder, reranker
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 class TestRetrievalPipelineRetrieve:
     def test_returns_empty_list_when_no_vector_hits(self):
-        pipeline, doc_store, vec_store, _, _ = _make_pipeline_with_mocks()
-        vec_store.similarity_search.return_value = []
+        pipeline, retriever, _, _ = _make_pipeline_with_mocks()
+        retriever.run.return_value = {"documents": []}
 
         results = pipeline.retrieve("some query")
         assert results == []
 
     def test_returns_top_k_results(self):
-        pipeline, doc_store, vec_store, _, reranker = _make_pipeline_with_mocks()
+        pipeline, retriever, _, reranker = _make_pipeline_with_mocks()
 
-        vec_store.similarity_search.return_value = [
-            {"doc_id": "id1", "score": 0.9},
-            {"doc_id": "id2", "score": 0.7},
-        ]
-        # IBMDb2DocumentStore.filter_documents returns Haystack Document objects
-        doc_store.filter_documents.return_value = [
-            Document(id="id1", content="SOP content",   meta={"file_path": "sops/delay.md"}),
+        # IBMDb2EmbeddingRetriever.run() returns documents directly with content
+        retriever.run.return_value = {"documents": [
+            Document(id="id1", content="SOP content",    meta={"file_path": "sops/delay.md"}),
             Document(id="id2", content="Policy content", meta={"file_path": "policies/comp.md"}),
-        ]
+        ]}
         # Reranker gives higher score to id2
         reranker.predict.return_value = [0.5, 0.9]
 
@@ -77,17 +70,12 @@ class TestRetrievalPipelineRetrieve:
         # After reranking, id2 should be first
         assert results[0]["id"] == "id2"
 
-    def test_skips_docs_missing_from_doc_store(self):
-        pipeline, doc_store, vec_store, _, reranker = _make_pipeline_with_mocks()
+    def test_skips_docs_with_none_content(self):
+        pipeline, retriever, _, reranker = _make_pipeline_with_mocks()
 
-        vec_store.similarity_search.return_value = [
-            {"doc_id": "id1", "score": 0.9},
-            {"doc_id": "id_missing", "score": 0.8},
-        ]
-        # Only id1 found in IBMDb2DocumentStore
-        doc_store.filter_documents.return_value = [
-            Document(id="id1", content="Found", meta={"file_path": "a.md"}),
-        ]
+        retriever.run.return_value = {"documents": [
+            Document(id="id1", content="Found",  meta={"file_path": "a.md"}),
+        ]}
         reranker.predict.return_value = [0.8]
 
         results = pipeline.retrieve("test")
